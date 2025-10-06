@@ -137,99 +137,111 @@ SGDPMMSBM = function(X, niterations, delta, xi, rou, kappa, alpha, beta, eta, ze
   ##start Gibb's sampling
   for (niter in 1:niterations)
   {
+    Z_old = Z
+    counts_Z_old = table(as.factor(Z_old))
+    k_old = length(counts_Z_old)
+    Q_old = Q
+    mu_old = mu
+    sigma_old = sigma
+    
+    ## update z ##
+    Z_new = sapply(1:n, function(i){
+      #determine whether ith component is a singleton (the only one node in the cluster)
+      current.cluster.i = Z_old[i]
+      if (counts_Z_old[current.cluster.i] > 1){
+        # not a singleton, have |C|+1 choices
+        current.counts.noi = counts_Z_old  #current.counts.noi corresponds to |C|
+        current.counts.noi[current.cluster.i] = current.counts.noi[current.cluster.i] - 1
+        #finding the probs for sampling process
+        current.probs = sapply(1:k_old, function(x) {
+          Z_star = Z_old
+          Z_star[i] = x
+          current.prob = log(current.counts.noi[x]) + loglike(Z_star, Q, mu, sigma, X, i, n)
+          return(current.prob)
+        })
+        Z_star = Z_old
+        Z_star[i] = k_old + 1
+        current.probs[k_old + 1] = log(gamma) + logmargs(Z_star, X, i, alpha, beta, rou, kappa, delta, xi)
+        current.probs = exp(current.probs - max(current.probs))
+        current.probs = current.probs / sum(current.probs)
+        
+        #choose the cluster number for ith observation
+        cluster.i = sample.int(k_old + 1, size = 1, prob = current.probs)
+        return(cluster.i)
+      } else {
+        # a singleton, have |C| choices
+        # delete the current cluster
+        current.counts.noi = counts_Z_old
+        current.counts.noi[current.cluster.i] = current.counts.noi[current.cluster.i] - 1
+        
+        #finding the probs for sampling process
+        current.probs = sapply(1:k_old, function(x) {
+          Z_star = Z_old
+          Z_star[i] = x
+          current.prob = log(current.counts.noi[x]) + loglike(Z_star, Q, mu, sigma, X, i, n)
+          return(current.prob)
+        })
+        Z_star = Z_old
+        Z_star[i] = k_old + 1
+        current.probs[k_old + 1] = log(gamma) + logmargs(Z_star, X, i, alpha, beta, rou, kappa, delta, xi)
+        current.probs = exp(current.probs - max(current.probs))
+        current.probs = current.probs / sum(current.probs)
+        
+        #choose the cluster number for ith observation
+        cluster.i = sample.int(k_old + 1, size = 1, prob = current.probs)
+        
+        if (cluster.i > k_old) { # if it belongs to a new cluster
+          return(current.cluster.i)
+        } else { # if it belongs to a previous cluster
+          return(cluster.i)
+        }
+      }
+    })
+    
+    counts_Z_new = table(as.factor(Z_new))
+    k_new = max(Z_new)
+    
+    if(k_new > k_old){
+      Q_star = matrix(0, k_new, k_new)
+      Q_star[1:k_old, 1:k_old] = Q
+      for (r in (k_old + 1):k_new) {
+        for (s in 1:k_new) {
+          Q_star[r, s] = rbeta(1, alpha, beta)
+          Q_star[s, r] = Q_star[r, s]
+        }
+      }
+      
+      sigma_star = matrix(0, k_new, k_new)
+      sigma_star[1:k_old, 1:k_old] = sigma
+      for (r in (k_old + 1):k_new) {
+        for (s in 1:k_new) {
+          sigma_star[r, s] = sqrt(rinvgamma(1, delta, xi))
+          sigma_star[s, r] = sigma_star[r, s]
+        }
+      }
+      
+      mu_star = matrix(0, k_new, k_new)
+      mu_star[1:k_old, 1:k_old] = mu
+      for (r in (k_old + 1):k_new) {
+        for (s in 1:k_new) {
+          mu_star[r, s] = rnorm(1, rou, sigma_star[r, s] / sqrt(kappa))
+          mu_star[s, r] = mu_star[r, s]
+        }
+      }
+      
+      Q = Q_star
+      mu = mu_star
+      sigma = sigma_star
+    }
+    
+    used_clusters = sort(unique(Z_new))
+    Z = as.integer(factor(Z_new, levels = used_clusters))
     counts_Z = table(as.factor(Z))
     k = length(counts_Z)
     
-    ## update z ##
-    for (i in 1:n)
-    { #determine whether ith component is a singleton (the only one node in the cluster)
-      current.cluster.i = Z[i]
-      if (counts_Z[current.cluster.i] > 1){
-        # not a singleton, have |C|+1 choices
-        current.counts.noi = counts_Z  #current.counts.noi corresponds to |C|
-        current.counts.noi[current.cluster.i] = current.counts.noi[current.cluster.i] - 1
-        #finding the probs for sampling process
-        current.probs = sapply(1:k, function(x) {
-          Z_star = Z
-          Z_star[i] = x
-          current.prob = log(current.counts.noi[x]) + loglike(Z_star, Q, mu, sigma, X, i, n)
-          return(current.prob)
-        })
-        Z_star = Z
-        Z_star[i] = k + 1
-        current.probs[k + 1] = log(gamma) + logmargs(Z_star, X, i, alpha, beta, rou, kappa, delta, xi)
-        current.probs = exp(current.probs - max(current.probs))
-        current.probs = current.probs / sum(current.probs)
-        
-        #choose the cluster number for ith observation
-        cluster.i = sample.int(k + 1, size = 1, prob = current.probs)
-        Z[i] = cluster.i
-        
-        if (cluster.i > k)
-        {
-          Q_star = matrix(0, k + 1, k + 1)
-          Q_star[1:k, 1:k] = Q
-          Q_star[k + 1, 1:(k + 1)] = rbeta(k + 1, alpha, beta)
-          Q_star[1:(k + 1), k + 1] = Q_star[k + 1, 1:(k + 1)]
-          Q = Q_star
-          
-          sigma_star = matrix(0, k + 1, k + 1)
-          sigma_star[1:k, 1:k] = sigma
-          sigma_star[k + 1, 1:(k + 1)] = sqrt(rinvgamma(k + 1, delta, xi))
-          sigma_star[1:(k + 1), k + 1] = sigma_star[k + 1, 1:(k + 1)]
-          sigma = sigma_star
-          
-          mu_star = matrix(0, k + 1, k + 1)
-          mu_star[1:k, 1:k] = mu
-          mu_star[k + 1, 1:(k + 1)] = rnorm(k + 1, rou, sigma[k + 1, 1:(k + 1)] / sqrt(kappa))
-          mu_star[1:(k + 1), k + 1] = mu_star[k + 1, 1:(k + 1)]
-          mu = mu_star
-          
-          counts_Z = table(as.factor(Z))
-          k = length(counts_Z)
-        } else {
-          counts_Z = table(as.factor(Z))
-          k = length(counts_Z)
-        }
-      } 
-      else {
-        # a singleton, have |C| choices
-        # delete the current cluster
-        current.counts.noi = counts_Z
-        current.counts.noi[current.cluster.i] = current.counts.noi[current.cluster.i] - 1
-        
-        #finding the probs for sampling process
-        current.probs = sapply(1:k, function(x) {
-          Z_star = Z
-          Z_star[i] = x
-          current.prob = log(current.counts.noi[x]) + loglike(Z_star, Q, mu, sigma, X, i, n)
-          return(current.prob)
-        })
-        Z_star = Z
-        Z_star[i] = k + 1
-        current.probs[k + 1] = log(gamma) + logmargs(Z_star, X, i, alpha, beta, rou, kappa, delta, xi)
-        current.probs = exp(current.probs - max(current.probs))
-        current.probs = current.probs / sum(current.probs)
-        
-        #choose the cluster number for ith observation
-        cluster.i = sample.int(k + 1, size = 1, prob = current.probs)
-        
-        if (cluster.i > k) { # if it belongs to a new cluster
-          cluster.i = current.cluster.i
-          counts_Z = table(as.factor(Z))
-          k = length(counts_Z)
-        } else { # if it belongs to a previous cluster
-          Z[i] = cluster.i
-          Z = ifelse(Z > current.cluster.i, Z - 1, Z)
-          Q = Q[-current.cluster.i, -current.cluster.i, drop = FALSE]
-          mu = mu[-current.cluster.i, -current.cluster.i, drop = FALSE]
-          sigma = sigma[-current.cluster.i, -current.cluster.i, drop = FALSE]
-          counts_Z = table(as.factor(Z))
-          k = length(counts_Z)
-        }
-      }
-    }
-    # end for loop over subjects i
+    Q = Q[used_clusters, used_clusters, drop = FALSE]
+    mu = mu[used_clusters, used_clusters, drop = FALSE]
+    sigma = sigma[used_clusters, used_clusters, drop = FALSE]
     
     ## update A: the adjacency matrix, a n by n matrix ##
     A = matrix(0, n, n)
@@ -669,15 +681,15 @@ df_results = data.frame(
 ggplot(df_results, aes(x = iteration, y = TDR, color = as.factor(threshold))) +
   geom_line(size = 1) +
   scale_color_viridis_d(name = "Threshold") +
-  labs(title = "True Discovery Rate (TDR) across Iterations of Sequential SGDPMM-SBM (preferattach)", x = "Iterations", y = "TDR") +
+  labs(title = "True Discovery Rate (TDR) across Iterations of Simultaneous SGDPMM-SBM (preferattach)", x = "Iterations", y = "TDR") +
   theme_minimal() +
   theme(panel.grid.major = element_blank())
-ggsave("True Discovery Rate (TDR) across Iterations of Sequential SGDPMM-SBM (preferattach).png", width = 6, height = 4)
+ggsave("True Discovery Rate (TDR) across Iterations of Simultaneous SGDPMM-SBM (preferattach).png", width = 6, height = 4)
 
 ggplot(df_results, aes(x = iteration, y = FDR, color = as.factor(threshold))) +
   geom_line(size = 1) +
   scale_color_viridis_d(name = "Threshold") +
-  labs(title = "False Discovery Rate (FDR) across Iterations of Sequential SGDPMM-SBM (preferattach)", x = "Iterations", y = "FDR") +
+  labs(title = "False Discovery Rate (FDR) across Iterations of Simultaneous SGDPMM-SBM (preferattach)", x = "Iterations", y = "FDR") +
   theme_minimal() +
   theme(panel.grid.major = element_blank())
-ggsave("False Discovery Rate (FDR) across Iterations of Sequential SGDPMM-SBM (preferattach).png", width = 6, height = 4)
+ggsave("False Discovery Rate (FDR) across Iterations of Simultaneous SGDPMM-SBM (preferattach).png", width = 6, height = 4)

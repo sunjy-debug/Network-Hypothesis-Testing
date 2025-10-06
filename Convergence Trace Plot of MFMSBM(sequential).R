@@ -68,7 +68,7 @@ logmargs = function(Z, X, j, alpha, beta, rou, kappa, delta, xi)
 }
 
 ## function for Collapsed sampler for MFM-SBM (main algorithm)
-MFMSBM = function(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lambda, threshold, A_true)
+MFMSBM = function(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lambda, tau, A_true)
 {
   ## Model: X_{ij}|A_{ij},Z \sim (1 - A_{ij}) N(0,1) + A_{ij} N(mu_{Z_i,Z_j}, sigma^2_{Z_i,Z_j})
   ##        A_{ij}|Z,Q \sim Ber(Q_{Z_i,Z_j}) ##
@@ -413,7 +413,7 @@ MFMSBM = function(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lam
     
     # calculate phi-value
     phi = matrix(0, n, n)
-    phi[lower.tri(phi)] = (q[lower.tri(q)] < threshold)
+    phi[lower.tri(phi)] = (q[lower.tri(q)] < tau)
     phi = phi + t(phi)
     diag(phi) = NA
     
@@ -546,44 +546,112 @@ MFM_performance = function(tau, data_generation_method){
   start = Sys.time()
   if(data_generation_method == "NSBM"){
     data_generation = NSBM_generation()
-  }else if (data_generation_method == "Star"){
+    X = data_generation$X
+    A = data_generation$A
+    n = nrow(X)
+    end = Sys.time()
+    elapse = end - start
+    cat("Data generation ends:", elapse, "\n")
+    
+    cat("Model fitting begins. \n")
+    start = Sys.time()  
+    niterations = 300
+    delta = 2
+    xi = 0.5
+    rou = 2.5
+    kappa = 1  
+    alpha = 4
+    beta = 7
+    gamma = 10
+    lambda = 2
+    fit = MFMSBM(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lambda, tau, A)
+    TDR = fit$TDR
+    FDR = fit$FDR
+    end = Sys.time()
+    cat("Model fitting ends. \n")
+  }else if (data_generation_method == "star"){
     data_generation = stargraph()
+    X = data_generation$X
+    A = data_generation$A
+    n = nrow(X)
+    end = Sys.time()
+    elapse = end - start
+    cat("Data generation ends:", elapse, "\n")
+    
+    cat("Model fitting begins. \n")
+    start = Sys.time()  
+    niterations = 300
+    delta = 2
+    xi = 1.5
+    rou = 1.5
+    kappa = 30
+    alpha = 1
+    beta = 8
+    gamma = 1
+    lambda = .4
+    fit = MFMSBM(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lambda, tau, A)
+    TDR = fit$TDR
+    FDR = fit$FDR
+    end = Sys.time()
+    cat("Model fitting ends. \n")
   }else if (data_generation_method == "randombi"){
     data_generation = randombipartitegraph()
+    X = data_generation$X
+    A = data_generation$A
+    n = nrow(X)
+    end = Sys.time()
+    elapse = end - start
+    cat("Data generation ends:", elapse, "\n")
+    
+    cat("Model fitting begins. \n")
+    start = Sys.time()  
+    niterations = 300
+    delta = 2
+    xi = 2
+    rou = 1
+    kappa = 1
+    alpha = .5
+    beta = 2
+    gamma = 3
+    lambda = 1
+    fit = MFMSBM(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lambda, tau, A)
+    TDR = fit$TDR
+    FDR = fit$FDR
+    end = Sys.time()
+    cat("Model fitting ends. \n")
   }else if (data_generation_method == "preferattach"){
     data_generation = preferattachgraph()
+    X = data_generation$X
+    A = data_generation$A
+    n = nrow(X)
+    end = Sys.time()
+    elapse = end - start
+    cat("Data generation ends:", elapse, "\n")
+    
+    cat("Model fitting begins. \n")
+    start = Sys.time()  
+    niterations = 300
+    delta = 5
+    xi = .5
+    rou = 2
+    kappa = 10
+    alpha = 1
+    beta = 3
+    gamma = 2
+    lambda = 1
+    fit = MFMSBM(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lambda, tau, A)
+    TDR = fit$TDR
+    FDR = fit$FDR
+    end = Sys.time()
+    cat("Model fitting ends. \n")
   }
-  X = data_generation$X
-  A = data_generation$A
-  n = nrow(X)
-  end = Sys.time()
-  elapse = end - start
-  cat("Data generation ends:", elapse, "\n")
-  
-  cat("Model fitting begins. \n")
-  start = Sys.time()  
-  niterations = 1000
-  delta = 2.5
-  xi = 2.5
-  rou = 0
-  kappa = 1
-  alpha = 1
-  beta = 1
-  gamma = 1
-  lambda = 1
-  fit = MFMSBM(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lambda, tau, A)
-  TDR = fit$TDR
-  FDR = fit$FDR
-  end = Sys.time()
-  cat("Model fitting ends. \n")
-  
   return(list(TDR = TDR, FDR = FDR))
 }
 
 library(parallel)
 cl = makeCluster(detectCores() - 1, type = "PSOCK")
 parallel::clusterSetRNGStream(cl, 1)
-threshold = c(0.005, 0.025, 0.05, 0.1, 0.15, 0.25)
+tau = c(0.005, 0.025, 0.05, 0.1, 0.15, 0.25)
 clusterEvalQ(cl, {
   library(dplyr)
   library(fossil)
@@ -593,31 +661,31 @@ clusterEvalQ(cl, {
 })
 clusterExport(cl, c("loglike", "logmargs", "MFMSBM", "MFM_performance", 
                     "NSBM_generation", "stargraph", "randombipartitegraph", "preferattachgraph"))
-results = clusterApply(cl, threshold, MFM_performance, data_generation_method = "preferattach")
+results = clusterApply(cl, tau, MFM_performance, data_generation_method = "NSBM")
 stopCluster(cl)
 
 TDR = lapply(results, function(x) x$TDR)
 FDR = lapply(results, function(x) x$FDR)
 
 df_results = data.frame(
-  iteration = rep(1:length(TDR[[1]]), times = length(threshold)),
-  threshold = rep(threshold, each = length(TDR[[1]])),
+  iteration = rep(1:length(TDR[[1]]), times = length(tau)),
+  tau = rep(tau, each = length(TDR[[1]])),
   TDR = unlist(TDR),
   FDR = unlist(FDR)
 )
 
-ggplot(df_results, aes(x = iteration, y = TDR, color = as.factor(threshold))) +
+ggplot(df_results, aes(x = iteration, y = TDR, color = as.factor(tau))) +
   geom_line(size = 1) +
   scale_color_viridis_d(name = "Threshold") +
-  labs(title = "True Discovery Rate (TDR) across Iterations of MFM-SBM (preferattach)", x = "Iterations", y = "TDR") +
+  labs(title = "True Discovery Rate (TDR) across Iterations of Sequential MFM-SBM (NSBM)", x = "Iterations", y = "TDR") +
   theme_minimal() +
   theme(panel.grid.major = element_blank())
-ggsave("True Discovery Rate (TDR) across Iterations of MFM-SBM (preferattach).png", width = 6, height = 4)
+ggsave("True Discovery Rate (TDR) across Iterations of Sequential MFM-SBM (NSBM).png", width = 6, height = 4)
 
-ggplot(df_results, aes(x = iteration, y = FDR, color = as.factor(threshold))) +
+ggplot(df_results, aes(x = iteration, y = FDR, color = as.factor(tau))) +
   geom_line(size = 1) +
   scale_color_viridis_d(name = "Threshold") +
-  labs(title = "False Discovery Rate (FDR) across Iterations of MFM-SBM (preferattach)", x = "Iterations", y = "FDR") +
+  labs(title = "False Discovery Rate (FDR) across Iterations of Sequential MFM-SBM (NSBM)", x = "Iterations", y = "FDR") +
   theme_minimal() +
   theme(panel.grid.major = element_blank())
-ggsave("False Discovery Rate (FDR) across Iterations of MFM-SBM (preferattach).png", width = 6, height = 4)
+ggsave("False Discovery Rate (FDR) across Iterations of Sequential MFM-SBM (NSBM).png", width = 6, height = 4)
