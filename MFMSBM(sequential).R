@@ -528,125 +528,123 @@ preferattachgraph = function(){
 ## take the data into the MFM-SBM algorithm
 ## take the data into the MFM-SBM algorithm
 ## take the data into the MFM-SBM algorithm
-MFM_performance = function(tau, data_generation_method){
+MFM_performance = function(tau, iter_index, data_generation_method){
   start = Sys.time()
-  TDR_MFM = rep(NA, 10)
-  FDR_MFM = rep(NA, 10)
-  TDR_rbfk = rep(NA, 10)
-  FDR_rbfk = rep(NA, 10)
-  TDR_klln = rep(NA, 10)
-  FDR_klln = rep(NA, 10)
-  for(itr in 1: 10){
-    start_data = Sys.time()
-    cat("Data generation starts.\n")
-    if(data_generation_method == "NSBM"){
-      data_generation = NSBM_generation()
-    }else if (data_generation_method == "star"){
-      data_generation = stargraph()
-    }else if (data_generation_method == "randombi"){
-      data_generation = randombipartitegraph()
-    }else if (data_generation_method == "preferattach"){
-      data_generation = preferattachgraph()
-    }
-    X = data_generation$X
-    A = data_generation$A
-    n = nrow(X)
-    end_data = Sys.time()
-    elapse_data = end_data - start_data
-    cat("Data generation ends: \n")
-    print(elapse_data)
-    
-    cat("MFMSBM fitting begins. \n")
-    start_mfm = Sys.time()
-    if(data_generation_method == "NSBM"){
-      start = Sys.time()  
-      niterations = 300
-      delta = 2
-      xi = 0.5
-      rou = 2.5
-      kappa = 1  
-      alpha = 4
-      beta = 7
-      gamma = 10
-      lambda = 2
-      phi_MFM = MFMSBM(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lambda, tau)
-    } else if(data_generation_method == "star"){
-      niterations = 300
-      delta = 2
-      xi = 1.5
-      rou = 1.5
-      kappa = 30
-      alpha = 1
-      beta = 8
-      gamma = 1
-      lambda = .4
-      phi_MFM = MFMSBM(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lambda, tau)
-    } else if(data_generation_method == "randombi"){
-      niterations = 300
-      delta = 2
-      xi = 2
-      rou = 1
-      kappa = 1
-      alpha = .5
-      beta = 2
-      gamma = 3
-      lambda = 1
-      phi_MFM = MFMSBM(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lambda, tau)
-    } else if(data_generation_method == "preferattach"){
-      niterations = 300
-      delta = 5
-      xi = .5
-      rou = 2
-      kappa = 10
-      alpha = 1
-      beta = 3
-      gamma = 2
-      lambda = 1
-      phi_MFM = MFMSBM(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lambda, tau)
-    }
-    TDR_MFM[itr] =  sum(A * phi_MFM, na.rm = TRUE) / sum(as.matrix(A), na.rm = TRUE)
-    FDR_MFM[itr] = sum((1 - A) * phi_MFM, na.rm = TRUE) / pmax(sum(phi_MFM, na.rm = TRUE), 1)
-    end_mfm = Sys.time()
-    elapse_mfm = end_mfm - start_mfm
-    cat("MFMSBM fitting ends: \n")
-    print(elapse_mfm)
-    
-    start_rbfk = Sys.time()
-    cat("Rebafka's algorithm starts.\n")
-    #Rebafka
-    fit_rbfk = noisySBM::fitNSBM(X, model = "Gauss01")
-    infer_rbfk = noisySBM::graphInference(X, nodeClustering = fit_rbfk[[2]]$clustering, theta = fit_rbfk[[2]]$theta, alpha = tau, modelFamily = "Gauss")
-    phi_rbfk = infer_rbfk$A
-    TDR_rbfk[itr] =  sum(A * phi_rbfk, na.rm = TRUE) / sum(as.matrix(A), na.rm = TRUE)
-    FDR_rbfk[itr] = sum((1 - A) * phi_rbfk, na.rm = TRUE) / pmax(sum(phi_rbfk, na.rm = TRUE), 1)
-    end_rbfk = Sys.time()
-    elapse_rbfk = end_rbfk - start_rbfk
-    cat("Rebafka's algorithm ends: \n")
-    print(elapse_rbfk)
-    
-    start_klln = Sys.time()
-    cat("Kilian's algorithm starts.\n")
-    #Kilian
-    infer_klln = noisysbmGGM::main_noisySBM(X, NIG = TRUE, alpha = tau)
-    phi_klln = infer_klln$A
-    TDR_klln[itr] =  sum(A * phi_klln, na.rm = TRUE) / sum(as.matrix(A), na.rm = TRUE)
-    FDR_klln[itr] = sum((1 - A) * phi_klln, na.rm = TRUE) / pmax(sum(phi_klln, na.rm = TRUE), 1)
-    end_klln = Sys.time()
-    elapse_klln = end_klln - start_klln
-    cat("Killian's algorithm ends: \n")
-    print(elapse_klln)
+  start_data = Sys.time()
+  cat("Data generation starts.\n")
+  if(data_generation_method == "NSBM"){
+    data_generation = NSBM_generation()
+  }else if (data_generation_method == "star"){
+    data_generation = stargraph()
+  }else if (data_generation_method == "randombi"){
+    data_generation = randombipartitegraph()
+  }else if (data_generation_method == "preferattach"){
+    data_generation = preferattachgraph()
   }
+  X = data_generation$X
+  A = data_generation$A
+  n = nrow(X)
+  end_data = Sys.time()
+  elapse_data = end_data - start_data
+  cat("Data generation ends: \n")
+  print(elapse_data)
+  
+  cat("MFMSBM fitting begins. \n")
+  start_mfm = Sys.time()
+  if(data_generation_method == "NSBM"){
+    start = Sys.time()  
+    niterations = 300
+    delta = 2
+    xi = 0.5
+    rou = 2.5
+    kappa = 1  
+    alpha = 4
+    beta = 7
+    gamma = 10
+    lambda = 2
+    phi_MFM = MFMSBM(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lambda, tau)
+  } else if(data_generation_method == "star"){
+    niterations = 300
+    delta = 2
+    xi = 1.5
+    rou = 1.5
+    kappa = 30
+    alpha = 1
+    beta = 8
+    gamma = 1
+    lambda = .4
+    phi_MFM = MFMSBM(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lambda, tau)
+  } else if(data_generation_method == "randombi"){
+    niterations = 300
+    delta = 2
+    xi = 2
+    rou = 1
+    kappa = 1
+    alpha = .5
+    beta = 2
+    gamma = 3
+    lambda = 1
+    phi_MFM = MFMSBM(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lambda, tau)
+  } else if(data_generation_method == "preferattach"){
+    niterations = 300
+    delta = 5
+    xi = .5
+    rou = 2
+    kappa = 10
+    alpha = 1
+    beta = 3
+    gamma = 2
+    lambda = 1
+    phi_MFM = MFMSBM(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lambda, tau)
+  }
+  TDR_MFM =  sum(A * phi_MFM, na.rm = TRUE) / sum(as.matrix(A), na.rm = TRUE)
+  FDR_MFM = sum((1 - A) * phi_MFM, na.rm = TRUE) / pmax(sum(phi_MFM, na.rm = TRUE), 1)
+  end_mfm = Sys.time()
+  elapse_mfm = end_mfm - start_mfm
+  cat("MFMSBM fitting ends: \n")
+  print(elapse_mfm)
+  
+  start_rbfk = Sys.time()
+  cat("Rebafka's algorithm starts.\n")
+  #Rebafka
+  fit_rbfk = noisySBM::fitNSBM(X, model = "Gauss01")
+  infer_rbfk = noisySBM::graphInference(X, nodeClustering = fit_rbfk[[2]]$clustering, theta = fit_rbfk[[2]]$theta, alpha = tau, modelFamily = "Gauss")
+  phi_rbfk = infer_rbfk$A
+  TDR_rbfk =  sum(A * phi_rbfk, na.rm = TRUE) / sum(as.matrix(A), na.rm = TRUE)
+  FDR_rbfk = sum((1 - A) * phi_rbfk, na.rm = TRUE) / pmax(sum(phi_rbfk, na.rm = TRUE), 1)
+  end_rbfk = Sys.time()
+  elapse_rbfk = end_rbfk - start_rbfk
+  cat("Rebafka's algorithm ends: \n")
+  print(elapse_rbfk)
+  
+  start_klln = Sys.time()
+  cat("Kilian's algorithm starts.\n")
+  #Kilian
+  infer_klln = noisysbmGGM::main_noisySBM(X, NIG = TRUE, alpha = tau)
+  phi_klln = infer_klln$A
+  TDR_klln =  sum(A * phi_klln, na.rm = TRUE) / sum(as.matrix(A), na.rm = TRUE)
+  FDR_klln = sum((1 - A) * phi_klln, na.rm = TRUE) / pmax(sum(phi_klln, na.rm = TRUE), 1)
+  end_klln = Sys.time()
+  elapse_klln = end_klln - start_klln
+  cat("Killian's algorithm ends: \n")
+  print(elapse_klln)
+
   end = Sys.time()
   elapse = end - start
   cat("All the models end.\n")
   print(elapse)
-  return(list(TDR_MFM = TDR_MFM, FDR_MFM = FDR_MFM, TDR_rbfk = TDR_rbfk, FDR_rbfk = FDR_rbfk, TDR_klln = TDR_klln, FDR_klln = FDR_klln))
+  return(list(tau = tau,
+              TDR_MFM = TDR_MFM, FDR_MFM = FDR_MFM, 
+              TDR_rbfk = TDR_rbfk, FDR_rbfk = FDR_rbfk, 
+              TDR_klln = TDR_klln, FDR_klln = FDR_klln))
 }
 
 library(parallel)
 cl = makeCluster(detectCores() - 1, type = "PSOCK")
 parallel::clusterSetRNGStream(cl, 2025)
 tau = c(0.005, 0.025, 0.05, 0.1, 0.15, 0.25)
+niteration = 10
+tasks = expand.grid(tau = tau, iteration = 1:niteration)
 clusterEvalQ(cl, {
   library(dplyr)
   library(tidyr)
@@ -660,55 +658,32 @@ clusterEvalQ(cl, {
 })
 clusterExport(cl, c("loglike", "logmargs", "MFMSBM", "MFM_performance", 
                     "NSBM_generation", "stargraph", "randombipartitegraph", "preferattachgraph"))
-results = clusterApply(cl, tau, MFM_performance, data_generation_method = "NSBM")
+results = parLapply(cl, 1:nrow(tasks), function(i) {
+  MFM_performance(tasks$tau[i], tasks$iteration[i], data_generation_method = "NSBM")
+})
 stopCluster(cl)
 
+tau = sapply(results, function(x) x$tau)
 TDR_MFM = sapply(results, function(x) x$TDR_MFM)
 FDR_MFM = sapply(results, function(x) x$FDR_MFM)
-if(is.null(dim(TDR_MFM))){
-  TDR_MFM_mean = TDR_MFM
-  TDR_MFM_sd = rep(0, length(tau))
-} else {
-  TDR_MFM_mean = apply(TDR_MFM, 2, mean)
-  TDR_MFM_sd = apply(TDR_MFM, 2, sd)
-}
+TDR_MFM_mean = sapply(unique(tau), function(x) mean(TDR_MFM[tau == x]))
+TDR_MFM_sd = sapply(unique(tau), function(x) sd(TDR_MFM[tau == x]))
 TDR_MFM_upper = pmin(TDR_MFM_mean + qnorm(.975) * TDR_MFM_sd, 1)
 TDR_MFM_lower = pmax(TDR_MFM_mean - qnorm(.975) * TDR_MFM_sd, 0)
-if(is.null(dim(FDR_MFM))){
-  FDR_MFM_mean = FDR_MFM
-  FDR_MFM_sd = rep(0, length(tau))
-} else {
-  FDR_MFM_mean = apply(FDR_MFM, 2, mean)
-  FDR_MFM_sd = apply(FDR_MFM, 2, sd)
-}
+FDR_MFM_mean = sapply(unique(tau), function(x) mean(FDR_MFM[tau == x]))
+FDR_MFM_sd = sapply(unique(tau), function(x) sd(FDR_MFM[tau == x]))
 FDR_MFM_upper = pmin(FDR_MFM_mean + qnorm(.975) * FDR_MFM_sd, 1)
 FDR_MFM_lower = pmax(FDR_MFM_mean - qnorm(.975) * FDR_MFM_sd, 0)
 
 TDR_rbfk = sapply(results, function(x) x$TDR_rbfk)
 FDR_rbfk = sapply(results, function(x) x$FDR_rbfk)
-if(is.null(dim(TDR_rbfk))){
-  TDR_rbfk_mean = TDR_rbfk
-} else {
-  TDR_rbfk_mean = apply(TDR_rbfk, 2, mean)
-}
-if(is.null(dim(FDR_rbfk))){
-  FDR_rbfk_mean = FDR_rbfk
-} else {
-  FDR_rbfk_mean = apply(FDR_rbfk, 2, mean)
-}
+TDR_rbfk_mean = sapply(unique(tau), function(x) mean(TDR_rbfk[tau == x]))
+FDR_rbfk_mean = sapply(unique(tau), function(x) mean(FDR_rbfk[tau == x]))
 
 TDR_klln = sapply(results, function(x) x$TDR_klln)
 FDR_klln = sapply(results, function(x) x$FDR_klln)
-if(is.null(dim(TDR_klln))){
-  TDR_klln_mean = TDR_klln
-} else {
-  TDR_klln_mean = apply(TDR_klln, 2, mean)
-}
-if(is.null(dim(FDR_klln))){
-  FDR_klln_mean = FDR_klln
-} else {
-  FDR_klln_mean = apply(FDR_klln, 2, mean)
-}
+TDR_klln_mean = sapply(unique(tau), function(x) mean(TDR_klln[tau == x]))
+FDR_klln_mean = sapply(unique(tau), function(x) mean(FDR_klln[tau == x]))
 
 df_results = data.frame(
   tau = rep(tau, 2),
