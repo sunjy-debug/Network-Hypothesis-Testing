@@ -526,8 +526,6 @@ preferattachgraph = function(){
 }
 
 ## take the data into the MFM-SBM algorithm
-## take the data into the MFM-SBM algorithm
-## take the data into the MFM-SBM algorithm
 MFM_performance = function(tau, iter_index, data_generation_method){
   start = Sys.time()
   start_data = Sys.time()
@@ -639,61 +637,86 @@ MFM_performance = function(tau, iter_index, data_generation_method){
               TDR_klln = TDR_klln, FDR_klln = FDR_klln))
 }
 
-library(parallel)
-cl = makeCluster(detectCores() - 1, type = "PSOCK")
-parallel::clusterSetRNGStream(cl, 2025)
-tau = c(0.005, 0.025, 0.05, 0.1, 0.15, 0.25)
-niteration = 10
-tasks = expand.grid(tau = tau, iteration = 1:niteration)
-clusterEvalQ(cl, {
-  library(dplyr)
-  library(tidyr)
-  library(ggplot2)
-  library(fossil)
-  library(invgamma)
-  library(MASS)
-  library(igraph)
-  library(noisySBM)
-  library(noisysbmGGM)
-})
-clusterExport(cl, c("loglike", "logmargs", "MFMSBM", "MFM_performance", 
-                    "NSBM_generation", "stargraph", "randombipartitegraph", "preferattachgraph"))
-results = parLapply(cl, 1:nrow(tasks), function(i) {
-  MFM_performance(tasks$tau[i], tasks$iteration[i], data_generation_method = "NSBM")
-})
-stopCluster(cl)
+cluster_apply = function(tau, iteration, data_generation_method = "NSBM") {
+  id = as.integer(Sys.getenv("SLURM_ARRAY_TASK_ID", "0"))
+  set.seed(iteration + 1000 * id)
+  
+  result = MFM_performance(tau, iteration, data_generation_method)
+  return(c(
+    tau = result$tau,
+    TDR_MFM = result$TDR_MFM, FDR_MFM = result$FDR_MFM,
+    TDR_rbfk = result$TDR_rbfk, FDR_rbfk = result$FDR_rbfk,
+    TDR_klln = result$TDR_klln, FDR_klln = result$FDR_klln
+  ))
+}
 
-tau = sapply(results, function(x) x$tau)
-TDR_MFM = sapply(results, function(x) x$TDR_MFM)
-FDR_MFM = sapply(results, function(x) x$FDR_MFM)
-TDR_MFM_mean = sapply(unique(tau), function(x) mean(TDR_MFM[tau == x]))
-TDR_MFM_sd = sapply(unique(tau), function(x) sd(TDR_MFM[tau == x]))
-TDR_MFM_upper = pmin(TDR_MFM_mean + qnorm(.975) * TDR_MFM_sd, 1)
-TDR_MFM_lower = pmax(TDR_MFM_mean - qnorm(.975) * TDR_MFM_sd, 0)
-FDR_MFM_mean = sapply(unique(tau), function(x) mean(FDR_MFM[tau == x]))
-FDR_MFM_sd = sapply(unique(tau), function(x) sd(FDR_MFM[tau == x]))
-FDR_MFM_upper = pmin(FDR_MFM_mean + qnorm(.975) * FDR_MFM_sd, 1)
-FDR_MFM_lower = pmax(FDR_MFM_mean - qnorm(.975) * FDR_MFM_sd, 0)
+taus = c(0.005, 0.025, 0.05, 0.1, 0.15, 0.25)
+niter = 10
+params = expand.grid(
+  tau = taus,
+  iteration = 1:niter,
+  data_generation_method = "NSBM",
+  KEEP.OUT.ATTRS = FALSE,
+  stringsAsFactors = FALSE
+)
 
-TDR_rbfk = sapply(results, function(x) x$TDR_rbfk)
-FDR_rbfk = sapply(results, function(x) x$FDR_rbfk)
-TDR_rbfk_mean = sapply(unique(tau), function(x) mean(TDR_rbfk[tau == x]))
-FDR_rbfk_mean = sapply(unique(tau), function(x) mean(FDR_rbfk[tau == x]))
+library(rslurm)
+outdir <- Sys.getenv("OUTDIR", unset = file.path(getwd(), "Output"))
+if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
+options(bitmapType = "cairo")
 
-TDR_klln = sapply(results, function(x) x$TDR_klln)
-FDR_klln = sapply(results, function(x) x$FDR_klln)
-TDR_klln_mean = sapply(unique(tau), function(x) mean(TDR_klln[tau == x]))
-FDR_klln_mean = sapply(unique(tau), function(x) mean(FDR_klln[tau == x]))
+sjob = slurm_apply(
+  FUN = cluster_apply,
+  params = params,
+  jobname = "mfmsbm-nsbm",
+  nodes = 6,
+  cpus_per_node = 8,
+  add_objects = c(
+    "loglike", "logmargs", "MFMSBM", "MFM_performance",
+    "NSBM_generation", "stargraph", "randombipartitegraph", "preferattachgraph"
+  ),
+  add_packages = c(
+    "dplyr","tidyr","ggplot2","fossil","invgamma","MASS",
+    "igraph","noisySBM","noisysbmGGM"
+  )
+)
 
-df_results = data.frame(
-  tau = rep(tau, 2),
-  metric = c(rep("TDR", length(tau)), rep("FDR", length(tau))),
-  mean = c(TDR_MFM_mean, FDR_MFM_mean),
+result = get_slurm_out(sjob, outtype = "table")
+result <- data.frame(result) %>%
+  mutate(
+    tau = as.numeric(tau),
+    TDR_MFM = as.numeric(TDR_MFM), FDR_MFM = as.numeric(FDR_MFM),
+    TDR_rbfk = as.numeric(TDR_rbfk), FDR_rbfk = as.numeric(FDR_rbfk),
+    TDR_klln = as.numeric(TDR_klln), FDR_klln = as.numeric(FDR_klln)
+  )
+
+taus = sort(unique(result$tau))
+
+TDR_MFM_mean  <- sapply(taus, function(x) mean(result$TDR_MFM[result$tau == x], na.rm=TRUE))
+TDR_MFM_sd    <- sapply(taus, function(x) sd  (result$TDR_MFM[result$tau == x], na.rm=TRUE))
+TDR_MFM_upper <- pmin(TDR_MFM_mean + qnorm(.975) * TDR_MFM_sd, 1)
+TDR_MFM_lower <- pmax(TDR_MFM_mean - qnorm(.975) * TDR_MFM_sd, 0)
+
+FDR_MFM_mean  <- sapply(taus, function(x) mean(result$FDR_MFM[result$tau == x], na.rm=TRUE))
+FDR_MFM_sd    <- sapply(taus, function(x) sd  (result$FDR_MFM[result$tau == x], na.rm=TRUE))
+FDR_MFM_upper <- pmin(FDR_MFM_mean + qnorm(.975) * FDR_MFM_sd, 1)
+FDR_MFM_lower <- pmax(FDR_MFM_mean - qnorm(.975) * FDR_MFM_sd, 0)
+
+TDR_rbfk_mean <- sapply(taus, function(x) mean(result$TDR_rbfk[result$tau == x], na.rm=TRUE))
+FDR_rbfk_mean <- sapply(taus, function(x) mean(result$FDR_rbfk[result$tau == x], na.rm=TRUE))
+TDR_klln_mean <- sapply(taus, function(x) mean(result$TDR_klln[result$tau == x], na.rm=TRUE))
+FDR_klln_mean <- sapply(taus, function(x) mean(result$FDR_klln[result$tau == x], na.rm=TRUE))
+
+df_results <- data.frame(
+  tau   = rep(taus, 2),
+  metric= c(rep("TDR", length(taus)), rep("FDR", length(taus))),
+  mean  = c(TDR_MFM_mean, FDR_MFM_mean),
   lower = c(TDR_MFM_lower, FDR_MFM_lower),
   upper = c(TDR_MFM_upper, FDR_MFM_upper)
 )
 
-ggplot(df_results, aes(x = tau, y = mean, color = metric, fill = metric)) +
+p1 = 
+  ggplot(df_results, aes(x = tau, y = mean, color = metric, fill = metric)) +
   geom_line(size = 1.2) +
   geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2, color = NA) +
   geom_point(size = 2) +
@@ -701,36 +724,37 @@ ggplot(df_results, aes(x = tau, y = mean, color = metric, fill = metric)) +
   labs(title = "MFM-SBM Performance Evaluation (NSBM)", x = "tau", y = "Metrics") +
   theme_minimal() +
   scale_color_manual(values = c("TDR" = "#1f77b4", "FDR" = "#ff7f0e")) +
-  scale_fill_manual(values = c("TDR" = "#1f77b4", "FDR" = "#ff7f0e")) + 
-  scale_x_continuous(breaks = tau) + 
+  scale_fill_manual(values = c("TDR" = "#1f77b4", "FDR" = "#ff7f0e")) +
+  scale_x_continuous(breaks = taus) +
   theme(panel.grid.major = element_blank())
-ggsave("MFM-SBM Performance Evaluation (NSBM).png", width = 4, height = 6)
+ggsave(file.path(outdir, "MFM-SBM_Evaluation_NSBM.png"), plot = p1, width = 4, height = 6, dpi = 300)
 
-df_ROC = data.frame(
-  TDR_MFM = TDR_MFM_mean,
-  FDR_MFM = FDR_MFM_mean,
-  TDR_rbfk = TDR_rbfk_mean,
-  FDR_rbfk = FDR_rbfk_mean,
-  TDR_klln = TDR_klln_mean,
-  FDR_klln = FDR_klln_mean,
-  tau = tau)%>%
+df_ROC <- data.frame(
+  tau       = taus,
+  TDR_MFM   = TDR_MFM_mean,
+  FDR_MFM   = FDR_MFM_mean,
+  TDR_rbfk  = TDR_rbfk_mean,
+  FDR_rbfk  = FDR_rbfk_mean,
+  TDR_klln  = TDR_klln_mean,
+  FDR_klln  = FDR_klln_mean
+) %>%
   dplyr::select(tau, contains("FDR"), contains("TDR")) %>%
   tidyr::pivot_longer(
     cols = -tau,
     names_to = c(".value", "Method"),
-    names_sep = "_") %>%
+    names_sep = "_"
+  ) %>%
   dplyr::mutate(Method = factor(Method, levels = c("MFM", "rbfk", "klln")))
 
-ggplot(df_ROC, aes(x = FDR, y = TDR, color = Method, shape = Method)) +
+p2 = 
+  ggplot(df_ROC, aes(x = FDR, y = TDR, color = Method, shape = Method)) +
   geom_line(size = 1) +
   geom_point(size = 3) +
-  scale_color_manual(
-    values = c("MFM" = "red", "rbfk" = "blue", "klln" = "green"),
-    labels = c("MFM-SBM", "RBFK", "KLLN")
-  ) +
-  scale_shape_manual(
-    values = c("MFM" = 17, "rbfk" = 16, "klln" = 15),
-    labels = c("MFM-SBM", "RBFK", "KLLN")
-  ) +
+  scale_color_manual(values = c("MFM" = "red", "rbfk" = "blue", "klln" = "green"),
+                     labels = c("MFM-SBM", "RBFK", "KLLN")) +
+  scale_shape_manual(values = c("MFM" = 17, "rbfk" = 16, "klln" = 15),
+                     labels = c("MFM-SBM", "RBFK", "KLLN")) +
   labs(title = "ROC Curve (NSBM)", x = "FDR", y = "TDR")
-ggsave("ROC Curve with MFMSBM (NSBM).png", width = 4, height = 6)
+ggsave(file.path(outdir, "MFMSBM (Sequential) ROC Curve (NSBM).png"), plot = p2, width = 4, height = 6, dpi = 300)
+
+cleanup_files(sjob)
