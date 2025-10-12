@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=mfmsbm-nsbm
+#SBATCH --job-name=sgdpmmsbm-seq-nsbm
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=1
 #SBATCH --time=24:00:00

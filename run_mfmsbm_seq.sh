@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=mfmsbm-nsbm
+#SBATCH --job-name=mfmsbm-seq-nsbm
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=1
 #SBATCH --time=24:00:00
@@ -9,6 +9,7 @@
 ml purge
 ml fhR/4.4.1-foss-2023b-R-4.4.1
 
+mkdir -p Output/run_mfmsbm_seq
 mkdir -p Output/run_mfmsbm_seq/logs
 unset DISPLAY
 

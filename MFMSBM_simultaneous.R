@@ -1,6 +1,7 @@
 rm(list=ls())
 ## We consider undirected graph without selfloops
 
+.libPaths("~/R/x86_64-pc-linux-gnu-library/4.4")
 library(dplyr)
 library(tidyr)
 library(ggplot2)
@@ -679,7 +680,7 @@ cat("Submitting Slurm job...\n")
 sjob = slurm_apply(
   cluster_apply,
   params,
-  jobname = "mfmsbm-nsbm",
+  jobname = "mfmsbm-sim",
   nodes = 600,
   cpus_per_node = 10,
   global_objects = c(

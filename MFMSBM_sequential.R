@@ -670,7 +670,7 @@ cat("Submitting Slurm job...\n")
 sjob = slurm_apply(
   cluster_apply,
   params,
-  jobname = "mfmsbm-nsbm",
+  jobname = "mfmsbm-seq",
   nodes = 600,
   cpus_per_node = 10,
   global_objects = c(
