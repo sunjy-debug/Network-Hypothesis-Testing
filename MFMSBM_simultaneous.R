@@ -671,7 +671,7 @@ params = expand.grid(
 )
 
 library(rslurm)
-outdir <- Sys.getenv("OUTDIR", unset = file.path(getwd(), "Output"))
+outdir <- Sys.getenv("OUTDIR", unset = file.path(getwd(), "Output/run_mfmsbm_sim"))
 if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
 options(bitmapType = "cairo")
 

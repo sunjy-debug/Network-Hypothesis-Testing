@@ -3,15 +3,15 @@
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=1
 #SBATCH --time=24:00:00
-#SBATCH --output=Output/logs/%x-%j.out
-#SBATCH --error=Output/logs/%x-%j.err
+#SBATCH --output=Output/run_sgdpmmsbm_sim/logs/%x-%j.out
+#SBATCH --error=Output/run_sgdpmmsbm_sim/logs/%x-%j.err
 
 ml purge
 ml fhR/4.4.1-foss-2023b-R-4.4.1
 
-mkdir -p Output/logs
+mkdir -p Output/run_sgdpmmsbm_sim/logs
 unset DISPLAY
 
-export OUTDIR="$PWD/Output"
+export OUTDIR="$PWD/Output/run_sgdpmmsbm_sim"
 
 Rscript --vanilla SGDPMMSBM_simultaneous.R
