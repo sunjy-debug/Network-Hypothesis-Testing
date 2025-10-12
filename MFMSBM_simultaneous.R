@@ -1,7 +1,6 @@
 rm(list=ls())
 ## We consider undirected graph without selfloops
 
-.libPaths("~/R/x86_64-pc-linux-gnu-library/4.4")
 library(dplyr)
 library(tidyr)
 library(ggplot2)
@@ -34,12 +33,12 @@ loglike = function(Z, Q, mu, sigma, X, j, n)
   if (j < n) {
     idx = (j+1):n
     output = output + sum(log((1 - Q[Z[j], Z[idx]]) * dnorm(X[j, idx], 0, 1) +
-                           Q[Z[j], Z[idx]] * dnorm(X[j, idx], mu[Z[j], Z[idx]], sigma[Z[j], Z[idx]])))
+                                Q[Z[j], Z[idx]] * dnorm(X[j, idx], mu[Z[j], Z[idx]], sigma[Z[j], Z[idx]])))
   }
   if (j > 1) {
     idx = 1:(j-1)
     output = output + sum(log((1 - Q[Z[idx], Z[j]]) * dnorm(X[idx, j], 0, 1) +
-                           Q[Z[idx], Z[j]] * dnorm(X[idx, j], mu[Z[idx], Z[j]], sigma[Z[idx], Z[j]])))
+                                Q[Z[idx], Z[j]] * dnorm(X[idx, j], mu[Z[idx], Z[j]], sigma[Z[idx], Z[j]])))
   }
   return(output)
 }
@@ -145,100 +144,110 @@ MFMSBM = function(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lam
   ##start Gibb's sampling
   for (niter in 1:niterations)
   {
-    counts_Z = table(as.factor(Z))
-    k = length(counts_Z)
+    Z_old = Z
+    counts_Z_old = table(as.factor(Z_old))
+    k_old = length(counts_Z_old)
+    Q_old = Q
+    mu_old = mu
+    sigma_old = sigma
     
     ## update z ##
-    for (i in 1:n)
-    { #determine whether ith component is a singleton (the only one node in the cluster)
-      current.cluster.i = Z[i]
-      if (counts_Z[current.cluster.i] > 1){
+    Z_new = sapply(1:n, function(i){
+      #determine whether ith component is a singleton (the only one node in the cluster)
+      current.cluster.i = Z_old[i]
+      if (counts_Z_old[current.cluster.i] > 1){
         # not a singleton, have |C|+1 choices
-        current.counts.noi = counts_Z  #current.counts.noi corresponds to |C|
+        current.counts.noi = counts_Z_old  #current.counts.noi corresponds to |C|
         current.counts.noi[current.cluster.i] = current.counts.noi[current.cluster.i] - 1
         #finding the probs for sampling process
-        current.probs = sapply(1:k, function(x) {
-          Z_star = Z
+        current.probs = sapply(1:k_old, function(x) {
+          Z_star = Z_old
           Z_star[i] = x
-          current.prob = log(gamma + current.counts.noi[x]) + loglike(Z_star, Q, mu, sigma, X, i, n)
+          current.prob = log(gamma + current.counts.noi[x]) + loglike(Z_star, Q_old, mu_old, sigma_old, X, i, n)
           return(current.prob)
         })
-        Z_star = Z
-        Z_star[i] = k + 1
-        current.probs[k + 1] = log(gamma) + logmargs(Z_star, X, i, alpha, beta, rou, kappa, delta, xi) + (Vn[k + 1] - Vn[k])
+        Z_star = Z_old
+        Z_star[i] = k_old + 1
+        current.probs[k_old + 1] = log(gamma) + logmargs(Z_star, X, i, alpha, beta, rou, kappa, delta, xi) + (Vn[k_old + 1] - Vn[k_old])
         current.probs = exp(current.probs - max(current.probs))
         current.probs = current.probs / sum(current.probs)
         
         #choose the cluster number for ith observation
-        cluster.i = sample.int(k + 1, size = 1, prob = current.probs)
-        Z[i] = cluster.i
-        
-        if (cluster.i > k)
-        {
-          Q_star = matrix(0, k + 1, k + 1)
-          Q_star[1:k, 1:k] = Q
-          Q_star[k + 1, 1:(k + 1)] = rbeta(k + 1, alpha, beta)
-          Q_star[1:(k + 1), k + 1] = Q_star[k + 1, 1:(k + 1)]
-          Q = Q_star
-          
-          sigma_star = matrix(0, k + 1, k + 1)
-          sigma_star[1:k, 1:k] = sigma
-          sigma_star[k + 1, 1:(k + 1)] = sqrt(rinvgamma(k + 1, delta, xi))
-          sigma_star[1:(k + 1), k + 1] = sigma_star[k + 1, 1:(k + 1)]
-          sigma = sigma_star
-          
-          mu_star = matrix(0, k + 1, k + 1)
-          mu_star[1:k, 1:k] = mu
-          mu_star[k + 1, 1:(k + 1)] = rnorm(k + 1, rou, sigma[k + 1, 1:(k + 1)] / sqrt(kappa))
-          mu_star[1:(k + 1), k + 1] = mu_star[k + 1, 1:(k + 1)]
-          mu = mu_star
-          
-          counts_Z = table(as.factor(Z))
-          k = length(counts_Z)
-        } else {
-          counts_Z = table(as.factor(Z))
-          k = length(counts_Z)
-        }
-      } 
-      else {
+        cluster.i = sample.int(k_old + 1, size = 1, prob = current.probs)
+        return(cluster.i)
+      } else {
         # a singleton, have |C| choices
         # delete the current cluster
-        current.counts.noi = counts_Z
+        current.counts.noi = counts_Z_old
         current.counts.noi[current.cluster.i] = current.counts.noi[current.cluster.i] - 1 - gamma
         
         #finding the probs for sampling process
-        current.probs = sapply(1:k, function(x) {
-          Z_star = Z
+        current.probs = sapply(1:k_old, function(x) {
+          Z_star = Z_old
           Z_star[i] = x
-          current.prob = log(gamma + current.counts.noi[x]) + loglike(Z_star, Q, mu, sigma, X, i, n)
+          current.prob = log(gamma + current.counts.noi[x]) + loglike(Z_star, Q_old, mu_old, sigma_old, X, i, n)
           return(current.prob)
         })
-        Z_star = Z
-        Z_star[i] = k + 1
-        current.probs[k + 1] = log(gamma) + logmargs(Z_star, X, i, alpha, beta, rou, kappa, delta, xi) + (Vn[k] - Vn[k - 1])
+        Z_star = Z_old
+        Z_star[i] = k_old + 1
+        current.probs[k_old + 1] = log(gamma) + logmargs(Z_star, X, i, alpha, beta, rou, kappa, delta, xi) + (Vn[k_old] - Vn[k_old - 1])
         current.probs = exp(current.probs - max(current.probs))
         current.probs = current.probs / sum(current.probs)
         
         #choose the cluster number for ith observation
-        cluster.i = sample.int(k + 1, size = 1, prob = current.probs)
+        cluster.i = sample.int(k_old + 1, size = 1, prob = current.probs)
         
-        
-        if (cluster.i > k) { # if it belongs to a new cluster
-          cluster.i = current.cluster.i
-          counts_Z = table(as.factor(Z))
-          k = length(counts_Z)
+        if (cluster.i > k_old) { # if it belongs to a new cluster
+          return(current.cluster.i)
         } else { # if it belongs to a previous cluster
-          Z[i] = cluster.i
-          Z = ifelse(Z > current.cluster.i, Z - 1, Z)
-          Q = Q[-current.cluster.i, -current.cluster.i, drop = FALSE]
-          mu = mu[-current.cluster.i, -current.cluster.i, drop = FALSE]
-          sigma = sigma[-current.cluster.i, -current.cluster.i, drop = FALSE]
-          counts_Z = table(as.factor(Z))
-          k = length(counts_Z)
+          return(cluster.i)
         }
       }
+    })
+    counts_Z_new = table(as.factor(Z_new))
+    k_new = max(Z_new)
+    
+    if(k_new > k_old){
+      Q_star = matrix(0, k_new, k_new)
+      Q_star[1:k_old, 1:k_old] = Q
+      for (r in (k_old + 1):k_new) {
+        for (s in 1:k_new) {
+          Q_star[r, s] = rbeta(1, alpha, beta)
+          Q_star[s, r] = Q_star[r, s]
+        }
+      }
+      
+      sigma_star = matrix(0, k_new, k_new)
+      sigma_star[1:k_old, 1:k_old] = sigma
+      for (r in (k_old + 1):k_new) {
+        for (s in 1:k_new) {
+          sigma_star[r, s] = sqrt(rinvgamma(1, delta, xi))
+          sigma_star[s, r] = sigma_star[r, s]
+        }
+      }
+      
+      mu_star = matrix(0, k_new, k_new)
+      mu_star[1:k_old, 1:k_old] = mu
+      for (r in (k_old + 1):k_new) {
+        for (s in 1:k_new) {
+          mu_star[r, s] = rnorm(1, rou, sigma_star[r, s] / sqrt(kappa))
+          mu_star[s, r] = mu_star[r, s]
+        }
+      }
+      
+      Q = Q_star
+      mu = mu_star
+      sigma = sigma_star
     }
-    # end for loop over subjects i
+    
+    used_clusters = sort(unique(Z_new))
+    Z = as.integer(factor(Z_new, levels = used_clusters))
+    counts_Z = table(as.factor(Z))
+    k = length(counts_Z)
+    
+    Q = Q[used_clusters, used_clusters, drop = FALSE]
+    mu = mu[used_clusters, used_clusters, drop = FALSE]
+    sigma = sigma[used_clusters, used_clusters, drop = FALSE]
     
     ## update A: the adjacency matrix, a n by n matrix ##
     A = matrix(0, n, n)
@@ -259,7 +268,7 @@ MFMSBM = function(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lam
     X_upper[lower.tri(X_upper, diag = TRUE)] = NA
     A_upper = A
     A_upper[lower.tri(A_upper, diag = TRUE)] = NA
-
+    
     for (r in 1:k){
       index_r = which(Z == r)
       n_r = length(index_r)
@@ -267,25 +276,25 @@ MFMSBM = function(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lam
       {
         index_s = which(Z == s)
         n_s = length(index_s)
-
+        
         alpha.l = 0
         beta.l  = 0
         delta.l = delta
         xi.l    = xi
         rou.l   = rou
         kappa.l = kappa
-
+        
         if (r == s) {
           if (n_r > 1) {
             alpha.l = sum(A_upper[index_r, index_s, drop = FALSE] == 1, na.rm = TRUE)
             beta.l = sum(A_upper[index_r, index_s, drop = FALSE] == 0, na.rm = TRUE)
-
+            
             if(alpha.l > 0) {
               x_values = X_upper[index_r, index_s, drop = FALSE][which(A_upper[index_r, index_s, drop = FALSE] == 1, arr.ind = TRUE)]
               n.l = length(x_values)
               xmean.l = mean(x_values)
               xss.l = sum((x_values - xmean.l) ^ 2)
-
+              
               delta.l = delta + n.l / 2
               xi.l = xi + (xss.l + kappa * n.l / (kappa + n.l) * (xmean.l - rou) ^ 2) / 2
               rou.l = (kappa * rou + n.l * xmean.l) / (kappa + n.l)
@@ -298,13 +307,13 @@ MFMSBM = function(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lam
             index_rs = cbind(pmin(index_rs[,1], index_rs[,2]), pmax(index_rs[,1], index_rs[,2]))
             alpha.l = sum(A_upper[index_rs, drop = FALSE] == 1, na.rm = TRUE)
             beta.l = sum(A_upper[index_rs, drop = FALSE] == 0, na.rm = TRUE)
-
+            
             if(alpha.l > 0){
               x_values = X_upper[index_rs, drop = FALSE][which(A_upper[index_rs, drop = FALSE] == 1, arr.ind = TRUE)]
               n.l = length(x_values)
               xmean.l = mean(x_values)
               xss.l = sum((x_values - xmean.l) ^ 2)
-
+              
               delta.l = delta + n.l / 2
               xi.l = xi + (xss.l + kappa * n.l / (kappa + n.l) * (xmean.l - rou) ^ 2) / 2
               rou.l = (kappa * rou + n.l * xmean.l) / (kappa + n.l)
@@ -627,7 +636,7 @@ MFM_performance = function(tau, iter_index, data_generation_method){
   elapse_klln = end_klln - start_klln
   cat("Killian's algorithm ends: \n")
   print(elapse_klln)
-
+  
   end = Sys.time()
   elapse = end - start
   cat("All the models end.\n")
@@ -731,7 +740,7 @@ p1 =
   scale_fill_manual(values = c("TDR" = "#1f77b4", "FDR" = "#ff7f0e")) +
   scale_x_continuous(breaks = taus) +
   theme(panel.grid.major = element_blank())
-ggsave(file.path(outdir, "MFM-SBM_Evaluation_NSBM.png"), plot = p1, width = 4, height = 6, dpi = 300)
+ggsave(file.path(outdir, "MFM-SBM_Evaluation_NSBM (apply).png"), plot = p1, width = 4, height = 6, dpi = 300)
 
 df_ROC <- data.frame(
   tau       = taus,
@@ -759,7 +768,7 @@ p2 =
   scale_shape_manual(values = c("MFM" = 17, "rbfk" = 16, "klln" = 15),
                      labels = c("MFM-SBM", "RBFK", "KLLN")) +
   labs(title = "ROC Curve (NSBM)", x = "FDR", y = "TDR")
-ggsave(file.path(outdir, "MFMSBM (Sequential) ROC Curve (NSBM).png"), plot = p2, width = 4, height = 6, dpi = 300)
+ggsave(file.path(outdir, "MFMSBM (Simultaneous) ROC Curve (NSBM).png"), plot = p2, width = 4, height = 6, dpi = 300)
 
 cleanup_files(sjob)
 cat("Output job ends!\n")

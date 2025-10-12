@@ -1,7 +1,7 @@
 rm(list=ls())
 ## We consider undirected graph without selfloops
 
-.libPaths("~/R/x86_64-pc-linux-gnu-library/4.4")
+library(ConjugateDP)
 library(dplyr)
 library(tidyr)
 library(ggplot2)
@@ -34,12 +34,12 @@ loglike = function(Z, Q, mu, sigma, X, j, n)
   if (j < n) {
     idx = (j+1):n
     output = output + sum(log((1 - Q[Z[j], Z[idx]]) * dnorm(X[j, idx], 0, 1) +
-                           Q[Z[j], Z[idx]] * dnorm(X[j, idx], mu[Z[j], Z[idx]], sigma[Z[j], Z[idx]])))
+                                Q[Z[j], Z[idx]] * dnorm(X[j, idx], mu[Z[j], Z[idx]], sigma[Z[j], Z[idx]])))
   }
   if (j > 1) {
     idx = 1:(j-1)
     output = output + sum(log((1 - Q[Z[idx], Z[j]]) * dnorm(X[idx, j], 0, 1) +
-                           Q[Z[idx], Z[j]] * dnorm(X[idx, j], mu[Z[idx], Z[j]], sigma[Z[idx], Z[j]])))
+                                Q[Z[idx], Z[j]] * dnorm(X[idx, j], mu[Z[idx], Z[j]], sigma[Z[idx], Z[j]])))
   }
   return(output)
 }
@@ -56,7 +56,7 @@ logmargs = function(Z, X, j, alpha, beta, rou, kappa, delta, xi)
   ##        rou, kappa = hyperparameters for the prior on elements in mu matrix in Normal distribution ##
   ##        delta, xi = hyperparameters for the prior on elements in sigma matrix in Inverse Gamma distribution ##
   
-  ## Output: m(A_j) in collapsed sampler for MFM-SBM ##
+  ## Output: m(A_j) in collapsed sampler for SGDPMM-SBM ##
   
   #################################################################
   n = nrow(X)
@@ -71,15 +71,15 @@ logmargs = function(Z, X, j, alpha, beta, rou, kappa, delta, xi)
   return(result)
 }
 
-## function for Collapsed sampler for MFM-SBM (main algorithm)
-MFMSBM = function(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lambda, tau)
+## function for Collapsed sampler for SGDPMM-SBM (main algorithm)
+SGDPMMSBM = function(X, niterations, delta, xi, rou, kappa, alpha, beta, eta, zeta, m, tau)
 {
   ## Model: X_{ij}|A_{ij},Z \sim (1 - A_{ij}) N(0,1) + A_{ij} N(mu_{Z_i,Z_j}, sigma^2_{Z_i,Z_j})
   ##        A_{ij}|Z,Q \sim Ber(Q_{Z_i,Z_j}) ##
   ##        Q_{rs} \sim Beta(alpha, beta), r,s = 1,...,k ##
   ##        P(z_i = j) = \pi_j, j = 1,...,k ##
-  ##        \pi \sim Dirichlet_k(gamma) ##
-  ##        k-1 \sim possion(lambda) ##
+  ##        \pi \sim Dirichlet_k(lambda, Beta(alpha, beta)) ##
+  ##        lambda \sim Stiring-Gamma(a, b, m) ##
   ##        sigma^2_{rs} \sim Inv-Gamma(delta, xi) ##
   ##        mu_{rs}|sigma^2_{rs} \sim N(rou, sigma^2_{rs} / kappa) ##
   
@@ -88,10 +88,9 @@ MFMSBM = function(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lam
   ################################################################
   
   ## Input: X = the observation data matrix, a n by n matrix ##
-  ##        niterations = the total number of iterations in MFM-SBM ##
+  ##        niterations = the total number of iterations in SGDPMM-SBM ##
   ##        alpha, beta = hyperparameters for the prior on elements in Q matrix in Beta distribution ##
-  ##        gamma = the parameter in Dirichlet distribution that controls the relative size of clusters ##
-  ##        lambda = the parameter for Poisson distribution ##
+  ##        a, b, m = the hyperparameter for the prior on gamma in SG distribution ##
   ##        rou, tao = hyperparameters for the prior on elements in mu vector in Normal distribution ##
   ##        delta, xi = hyperparameters for the prior on elements in sigma2 matrxi in Inverse Gamma distribution ##
   
@@ -104,9 +103,8 @@ MFMSBM = function(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lam
   n = dim(X)[1]
   
   # initialization of clustering configuration
-  # Z, k, Q, mu, sigma^2
-  k = rpois(1, lambda) + 1
-  Z = sample.int(k, size = n, replace = TRUE) # cluster assignment
+  # Z, gamma, Q, mu, sigma^2
+  Z = sample.int(1, size = n, replace = TRUE) # cluster assignment
   Z = as.integer(factor(Z))
   counts_Z = table(as.factor(Z)) # cluster sizes
   k = length(counts_Z) # number of clusters
@@ -123,24 +121,8 @@ MFMSBM = function(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lam
       mu[j,i] = mu[i,j]
     }
   }
-  
+  gamma = rSg(1, eta, zeta, m)
   History = vector("list", niterations)
-  
-  # Vn: a set of pre-calculated logarithmic normalization constants related to the number of clusters
-  # adjusting the probability weight of the number of clusters by encoding the prior probability structure of the number of clusters
-  Vn = numeric(n + 1)
-  max_w = n + 1
-  for (t in 1:(n + 1)) {
-    r = -Inf
-    for (w in t:max_w) {
-      sum_log_numerator = lgamma(w + 1) - lgamma(w - t + 1)
-      sum_log_denominator = lgamma(w * gamma + n) - lgamma(w * gamma)
-      b = sum_log_numerator - sum_log_denominator + dpois(w - 1, lambda, log = TRUE)
-      m = max(r, b)
-      r = log(exp(r - m) + exp(b - m)) + m
-    }
-    Vn[t] = r
-  }
   
   ##start Gibb's sampling
   for (niter in 1:niterations)
@@ -160,12 +142,12 @@ MFMSBM = function(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lam
         current.probs = sapply(1:k, function(x) {
           Z_star = Z
           Z_star[i] = x
-          current.prob = log(gamma + current.counts.noi[x]) + loglike(Z_star, Q, mu, sigma, X, i, n)
+          current.prob = log(current.counts.noi[x]) + loglike(Z_star, Q, mu, sigma, X, i, n)
           return(current.prob)
         })
         Z_star = Z
         Z_star[i] = k + 1
-        current.probs[k + 1] = log(gamma) + logmargs(Z_star, X, i, alpha, beta, rou, kappa, delta, xi) + (Vn[k + 1] - Vn[k])
+        current.probs[k + 1] = log(gamma) + logmargs(Z_star, X, i, alpha, beta, rou, kappa, delta, xi)
         current.probs = exp(current.probs - max(current.probs))
         current.probs = current.probs / sum(current.probs)
         
@@ -204,24 +186,23 @@ MFMSBM = function(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lam
         # a singleton, have |C| choices
         # delete the current cluster
         current.counts.noi = counts_Z
-        current.counts.noi[current.cluster.i] = current.counts.noi[current.cluster.i] - 1 - gamma
+        current.counts.noi[current.cluster.i] = current.counts.noi[current.cluster.i] - 1
         
         #finding the probs for sampling process
         current.probs = sapply(1:k, function(x) {
           Z_star = Z
           Z_star[i] = x
-          current.prob = log(gamma + current.counts.noi[x]) + loglike(Z_star, Q, mu, sigma, X, i, n)
+          current.prob = log(current.counts.noi[x]) + loglike(Z_star, Q, mu, sigma, X, i, n)
           return(current.prob)
         })
         Z_star = Z
         Z_star[i] = k + 1
-        current.probs[k + 1] = log(gamma) + logmargs(Z_star, X, i, alpha, beta, rou, kappa, delta, xi) + (Vn[k] - Vn[k - 1])
+        current.probs[k + 1] = log(gamma) + logmargs(Z_star, X, i, alpha, beta, rou, kappa, delta, xi)
         current.probs = exp(current.probs - max(current.probs))
         current.probs = current.probs / sum(current.probs)
         
         #choose the cluster number for ith observation
         cluster.i = sample.int(k + 1, size = 1, prob = current.probs)
-        
         
         if (cluster.i > k) { # if it belongs to a new cluster
           cluster.i = current.cluster.i
@@ -243,13 +224,12 @@ MFMSBM = function(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lam
     ## update A: the adjacency matrix, a n by n matrix ##
     A = matrix(0, n, n)
     for(i in 1:n) {
-      r = Z[i]
       for(j in i:n) {
-        s = Z[j]
         if(i == j) next
-        p_null = (1 - Q[r,s]) * dnorm(X[i,j])
-        p_alt = Q[r,s] * dnorm(X[i,j], mu[r,s], sigma[r,s])
-        A[i,j] = rbinom(1, size = 1, prob = p_alt / (p_null + p_alt))
+        r = Z[i]
+        s = Z[j]
+        A[i,j] = rbinom(1, size = 1,
+                        Q[r,s] * dnorm(X[i,j], mu[r,s], sigma[r,s]) / ((1 - Q[r,s]) * dnorm(X[i,j]) + Q[r,s] * dnorm(X[i,j], mu[r,s], sigma[r,s])))
       }
     }
     A = A + t(A)
@@ -259,7 +239,7 @@ MFMSBM = function(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lam
     X_upper[lower.tri(X_upper, diag = TRUE)] = NA
     A_upper = A
     A_upper[lower.tri(A_upper, diag = TRUE)] = NA
-
+    
     for (r in 1:k){
       index_r = which(Z == r)
       n_r = length(index_r)
@@ -267,25 +247,30 @@ MFMSBM = function(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lam
       {
         index_s = which(Z == s)
         n_s = length(index_s)
-
+        
         alpha.l = 0
         beta.l  = 0
         delta.l = delta
         xi.l    = xi
         rou.l   = rou
         kappa.l = kappa
-
+        
         if (r == s) {
           if (n_r > 1) {
             alpha.l = sum(A_upper[index_r, index_s, drop = FALSE] == 1, na.rm = TRUE)
             beta.l = sum(A_upper[index_r, index_s, drop = FALSE] == 0, na.rm = TRUE)
-
-            if(alpha.l > 0) {
+            
+            if(alpha.l == 0){
+              delta.l = delta
+              xi.l = xi
+              rou.l = rou
+              kappa.l = kappa
+            } else {
               x_values = X_upper[index_r, index_s, drop = FALSE][which(A_upper[index_r, index_s, drop = FALSE] == 1, arr.ind = TRUE)]
               n.l = length(x_values)
               xmean.l = mean(x_values)
               xss.l = sum((x_values - xmean.l) ^ 2)
-
+              
               delta.l = delta + n.l / 2
               xi.l = xi + (xss.l + kappa * n.l / (kappa + n.l) * (xmean.l - rou) ^ 2) / 2
               rou.l = (kappa * rou + n.l * xmean.l) / (kappa + n.l)
@@ -298,13 +283,13 @@ MFMSBM = function(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lam
             index_rs = cbind(pmin(index_rs[,1], index_rs[,2]), pmax(index_rs[,1], index_rs[,2]))
             alpha.l = sum(A_upper[index_rs, drop = FALSE] == 1, na.rm = TRUE)
             beta.l = sum(A_upper[index_rs, drop = FALSE] == 0, na.rm = TRUE)
-
+            
             if(alpha.l > 0){
               x_values = X_upper[index_rs, drop = FALSE][which(A_upper[index_rs, drop = FALSE] == 1, arr.ind = TRUE)]
               n.l = length(x_values)
               xmean.l = mean(x_values)
               xss.l = sum((x_values - xmean.l) ^ 2)
-
+              
               delta.l = delta + n.l / 2
               xi.l = xi + (xss.l + kappa * n.l / (kappa + n.l) * (xmean.l - rou) ^ 2) / 2
               rou.l = (kappa * rou + n.l * xmean.l) / (kappa + n.l)
@@ -320,6 +305,8 @@ MFMSBM = function(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lam
         mu[s,r] = mu[r,s]
       }
     }
+    
+    gamma = rSg_posterior(1, eta, zeta, m, k, n)
     
     History[[niter]] = list(Zout = Z, Aout = A)
     if (niter %% 10 == 0) {
@@ -526,8 +513,8 @@ preferattachgraph = function(){
   return(list(A = A, X = X))
 }
 
-## take the data into the MFM-SBM algorithm
-MFM_performance = function(tau, iter_index, data_generation_method){
+## take the data into the SGDPMM-SBM algorithm
+SGDPMM_performance = function(tau, iter_index, data_generation_method){
   start = Sys.time()
   start_data = Sys.time()
   cat("Data generation starts.\n")
@@ -548,8 +535,8 @@ MFM_performance = function(tau, iter_index, data_generation_method){
   cat("Data generation ends: \n")
   print(elapse_data)
   
-  cat("MFMSBM fitting begins. \n")
-  start_mfm = Sys.time()
+  cat("SGDPMMSBM fitting begins. \n")
+  start_sgdpmm = Sys.time()
   if(data_generation_method == "NSBM"){
     start = Sys.time()  
     niterations = 300
@@ -561,7 +548,7 @@ MFM_performance = function(tau, iter_index, data_generation_method){
     beta = 7
     gamma = 10
     lambda = 2
-    phi_MFM = MFMSBM(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lambda, tau)
+    phi_SGDPMM = SGDPMMSBM(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lambda, tau)
   } else if(data_generation_method == "star"){
     niterations = 300
     delta = 2
@@ -572,7 +559,7 @@ MFM_performance = function(tau, iter_index, data_generation_method){
     beta = 8
     gamma = 1
     lambda = .4
-    phi_MFM = MFMSBM(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lambda, tau)
+    phi_SGDPMM = SGDPMMSBM(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lambda, tau)
   } else if(data_generation_method == "randombi"){
     niterations = 300
     delta = 2
@@ -583,7 +570,7 @@ MFM_performance = function(tau, iter_index, data_generation_method){
     beta = 2
     gamma = 3
     lambda = 1
-    phi_MFM = MFMSBM(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lambda, tau)
+    phi_SGDPMM = SGDPMMSBM(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lambda, tau)
   } else if(data_generation_method == "preferattach"){
     niterations = 300
     delta = 5
@@ -594,14 +581,14 @@ MFM_performance = function(tau, iter_index, data_generation_method){
     beta = 3
     gamma = 2
     lambda = 1
-    phi_MFM = MFMSBM(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lambda, tau)
+    phi_SGDPMM = SGDPMMSBM(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lambda, tau)
   }
-  TDR_MFM =  sum(A * phi_MFM, na.rm = TRUE) / sum(as.matrix(A), na.rm = TRUE)
-  FDR_MFM = sum((1 - A) * phi_MFM, na.rm = TRUE) / pmax(sum(phi_MFM, na.rm = TRUE), 1)
-  end_mfm = Sys.time()
-  elapse_mfm = end_mfm - start_mfm
-  cat("MFMSBM fitting ends: \n")
-  print(elapse_mfm)
+  TDR_SGDPMM =  sum(A * phi_SGDPMM, na.rm = TRUE) / sum(as.matrix(A), na.rm = TRUE)
+  FDR_SGDPMM = sum((1 - A) * phi_SGDPMM, na.rm = TRUE) / pmax(sum(phi_SGDPMM, na.rm = TRUE), 1)
+  end_sgdpmm = Sys.time()
+  elapse_sgdpmm = end_sgdpmm - start_sgdpmm
+  cat("SGDPMMSBM fitting ends: \n")
+  print(elapse_sgdomm)
   
   start_rbfk = Sys.time()
   cat("Rebafka's algorithm starts.\n")
@@ -627,13 +614,13 @@ MFM_performance = function(tau, iter_index, data_generation_method){
   elapse_klln = end_klln - start_klln
   cat("Killian's algorithm ends: \n")
   print(elapse_klln)
-
+  
   end = Sys.time()
   elapse = end - start
   cat("All the models end.\n")
   print(elapse)
   return(list(tau = tau,
-              TDR_MFM = TDR_MFM, FDR_MFM = FDR_MFM, 
+              TDR_SGDPMM = TDR_SGDPMM, FDR_SGDPMM = FDR_SGDPMM, 
               TDR_rbfk = TDR_rbfk, FDR_rbfk = FDR_rbfk, 
               TDR_klln = TDR_klln, FDR_klln = FDR_klln))
 }
@@ -642,10 +629,10 @@ cluster_apply = function(tau, iteration, data_generation_method = "NSBM") {
   id = as.integer(Sys.getenv("SLURM_ARRAY_TASK_ID", "0"))
   set.seed(iteration + 1000 * id)
   
-  result = MFM_performance(tau, iteration, data_generation_method)
+  result = SGDPMM_performance(tau, iteration, data_generation_method)
   return(c(
     tau = result$tau,
-    TDR_MFM = result$TDR_MFM, FDR_MFM = result$FDR_MFM,
+    TDR_SGDPMM = result$TDR_SGDPMM, FDR_SGDPMM = result$FDR_SGDPMM,
     TDR_rbfk = result$TDR_rbfk, FDR_rbfk = result$FDR_rbfk,
     TDR_klln = result$TDR_klln, FDR_klln = result$FDR_klln
   ))
@@ -670,11 +657,11 @@ cat("Submitting Slurm job...\n")
 sjob = slurm_apply(
   cluster_apply,
   params,
-  jobname = "mfmsbm-nsbm",
+  jobname = "sgdpmmsbm-nsbm",
   nodes = 600,
   cpus_per_node = 10,
   global_objects = c(
-    "loglike", "logmargs", "MFMSBM", "MFM_performance",
+    "loglike", "logmargs", "SGDPMMSBM", "SGDPMM_performance",
     "NSBM_generation", "stargraph", "randombipartitegraph", "preferattachgraph"
   ),
   pkgs = c(
@@ -689,22 +676,22 @@ result = get_slurm_out(sjob, outtype = "table")
 result <- data.frame(result) %>%
   mutate(
     tau = as.numeric(tau),
-    TDR_MFM = as.numeric(TDR_MFM), FDR_MFM = as.numeric(FDR_MFM),
+    TDR_SGDPMM = as.numeric(TDR_SGDPMM), FDR_SGDPMM = as.numeric(FDR_SGDPMM),
     TDR_rbfk = as.numeric(TDR_rbfk), FDR_rbfk = as.numeric(FDR_rbfk),
     TDR_klln = as.numeric(TDR_klln), FDR_klln = as.numeric(FDR_klln)
   )
 
 taus = sort(unique(result$tau))
 
-TDR_MFM_mean  <- sapply(taus, function(x) mean(result$TDR_MFM[result$tau == x], na.rm=TRUE))
-TDR_MFM_sd    <- sapply(taus, function(x) sd  (result$TDR_MFM[result$tau == x], na.rm=TRUE))
-TDR_MFM_upper <- pmin(TDR_MFM_mean + qnorm(.975) * TDR_MFM_sd, 1)
-TDR_MFM_lower <- pmax(TDR_MFM_mean - qnorm(.975) * TDR_MFM_sd, 0)
+TDR_SGDPMM_mean  <- sapply(taus, function(x) mean(result$TDR_SGDPMM[result$tau == x], na.rm=TRUE))
+TDR_SGDPMM_sd    <- sapply(taus, function(x) sd  (result$TDR_SGDPMM[result$tau == x], na.rm=TRUE))
+TDR_SGDPMM_upper <- pmin(TDR_SGDPMM_mean + qnorm(.975) * TDR_SGDPMM_sd, 1)
+TDR_SGDPMM_lower <- pmax(TDR_SGDPMM_mean - qnorm(.975) * TDR_SGDPMM_sd, 0)
 
-FDR_MFM_mean  <- sapply(taus, function(x) mean(result$FDR_MFM[result$tau == x], na.rm=TRUE))
-FDR_MFM_sd    <- sapply(taus, function(x) sd  (result$FDR_MFM[result$tau == x], na.rm=TRUE))
-FDR_MFM_upper <- pmin(FDR_MFM_mean + qnorm(.975) * FDR_MFM_sd, 1)
-FDR_MFM_lower <- pmax(FDR_MFM_mean - qnorm(.975) * FDR_MFM_sd, 0)
+FDR_SGDPMM_mean  <- sapply(taus, function(x) mean(result$FDR_SGDPMM[result$tau == x], na.rm=TRUE))
+FDR_SGDPMM_sd    <- sapply(taus, function(x) sd  (result$FDR_SGDPMM[result$tau == x], na.rm=TRUE))
+FDR_SGDPMM_upper <- pmin(FDR_SGDPMM_mean + qnorm(.975) * FDR_SGDPMM_sd, 1)
+FDR_SGDPMM_lower <- pmax(FDR_SGDPMM_mean - qnorm(.975) * FDR_SGDPMM_sd, 0)
 
 TDR_rbfk_mean <- sapply(taus, function(x) mean(result$TDR_rbfk[result$tau == x], na.rm=TRUE))
 FDR_rbfk_mean <- sapply(taus, function(x) mean(result$FDR_rbfk[result$tau == x], na.rm=TRUE))
@@ -714,9 +701,9 @@ FDR_klln_mean <- sapply(taus, function(x) mean(result$FDR_klln[result$tau == x],
 df_results <- data.frame(
   tau   = rep(taus, 2),
   metric= c(rep("TDR", length(taus)), rep("FDR", length(taus))),
-  mean  = c(TDR_MFM_mean, FDR_MFM_mean),
-  lower = c(TDR_MFM_lower, FDR_MFM_lower),
-  upper = c(TDR_MFM_upper, FDR_MFM_upper)
+  mean  = c(TDR_SGDPMM_mean, FDR_SGDPMM_mean),
+  lower = c(TDR_SGDPMM_lower, FDR_SGDPMM_lower),
+  upper = c(TDR_SGDPMM_upper, FDR_SGDPMM_upper)
 )
 
 p1 = 
@@ -725,18 +712,18 @@ p1 =
   geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2, color = NA) +
   geom_point(size = 2) +
   geom_point(aes(x = tau, y = tau), size = 2, shape = 4, color = "red") +
-  labs(title = "MFM-SBM Performance Evaluation (NSBM)", x = "tau", y = "Metrics") +
+  labs(title = "SGDPMM-SBM Performance Evaluation (NSBM)", x = "tau", y = "Metrics") +
   theme_minimal() +
   scale_color_manual(values = c("TDR" = "#1f77b4", "FDR" = "#ff7f0e")) +
   scale_fill_manual(values = c("TDR" = "#1f77b4", "FDR" = "#ff7f0e")) +
   scale_x_continuous(breaks = taus) +
   theme(panel.grid.major = element_blank())
-ggsave(file.path(outdir, "MFM-SBM_Evaluation_NSBM.png"), plot = p1, width = 4, height = 6, dpi = 300)
+ggsave(file.path(outdir, "SGDPMM-SBM_Evaluation_NSBM (apply).png"), plot = p1, width = 4, height = 6, dpi = 300)
 
 df_ROC <- data.frame(
   tau       = taus,
-  TDR_MFM   = TDR_MFM_mean,
-  FDR_MFM   = FDR_MFM_mean,
+  TDR_SGDPMM   = TDR_SGDPMM_mean,
+  FDR_SGDPMM   = FDR_SGDPMM_mean,
   TDR_rbfk  = TDR_rbfk_mean,
   FDR_rbfk  = FDR_rbfk_mean,
   TDR_klln  = TDR_klln_mean,
@@ -748,18 +735,18 @@ df_ROC <- data.frame(
     names_to = c(".value", "Method"),
     names_sep = "_"
   ) %>%
-  dplyr::mutate(Method = factor(Method, levels = c("MFM", "rbfk", "klln")))
+  dplyr::mutate(Method = factor(Method, levels = c("SGDPMM", "rbfk", "klln")))
 
 p2 = 
   ggplot(df_ROC, aes(x = FDR, y = TDR, color = Method, shape = Method)) +
   geom_line(linewidth = 1) +
   geom_point(size = 3) +
-  scale_color_manual(values = c("MFM" = "red", "rbfk" = "blue", "klln" = "green"),
-                     labels = c("MFM-SBM", "RBFK", "KLLN")) +
-  scale_shape_manual(values = c("MFM" = 17, "rbfk" = 16, "klln" = 15),
-                     labels = c("MFM-SBM", "RBFK", "KLLN")) +
+  scale_color_manual(values = c("SGDPMM" = "red", "rbfk" = "blue", "klln" = "green"),
+                     labels = c("SGDPMM-SBM", "RBFK", "KLLN")) +
+  scale_shape_manual(values = c("SGDPMM" = 17, "rbfk" = 16, "klln" = 15),
+                     labels = c("SGDPMM-SBM", "RBFK", "KLLN")) +
   labs(title = "ROC Curve (NSBM)", x = "FDR", y = "TDR")
-ggsave(file.path(outdir, "MFMSBM (Sequential) ROC Curve (NSBM).png"), plot = p2, width = 4, height = 6, dpi = 300)
+ggsave(file.path(outdir, "SGDPMMSBM (Simultaneous) ROC Curve (NSBM).png"), plot = p2, width = 4, height = 6, dpi = 300)
 
 cleanup_files(sjob)
 cat("Output job ends!\n")
