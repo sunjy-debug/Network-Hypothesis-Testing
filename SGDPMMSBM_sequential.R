@@ -536,21 +536,21 @@ SGDPMM_performance = function(tau, iter_index, data_generation_method){
   cat("Data generation ends: \n")
   print(elapse_data)
   
-  cat("SGDPMMSBM fitting begins. \n")
   start_sgdpmm = Sys.time()
+  cat("SGDPMMSBM starts.\n")
   if(data_generation_method == "NSBM"){
-    start = Sys.time()  
     niterations = 300
-    delta = 2
-    xi = 0.5
-    rou = 2.5
-    kappa = 1  
+    delta = 5
+    xi = 2.5
+    rou = 1.2
+    kappa = 15
     alpha = 4
-    beta = 7
-    gamma = 10
-    lambda = 2
-    phi_SGDPMM = SGDPMMSBM(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lambda, tau)
-  } else if(data_generation_method == "star"){
+    beta = 6
+    eta = 2.5
+    zeta = 2
+    m = 5
+    phi_SGDPMM = SGDPMMSBM(X, niterations, delta, xi, rou, kappa, alpha, beta, eta, zeta, m, tau)
+  } else if (data_generation_method == "star") {
     niterations = 300
     delta = 2
     xi = 1.5
@@ -558,10 +558,11 @@ SGDPMM_performance = function(tau, iter_index, data_generation_method){
     kappa = 30
     alpha = 1
     beta = 8
-    gamma = 1
-    lambda = .4
-    phi_SGDPMM = SGDPMMSBM(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lambda, tau)
-  } else if(data_generation_method == "randombi"){
+    eta = 5
+    zeta = 2
+    m = 10
+    phi_SGDPMM = SGDPMMSBM(X, niterations, delta, xi, rou, kappa, alpha, beta, eta, zeta, m, tau)
+  } else if (data_generation_method == "randombi") {
     niterations = 300
     delta = 2
     xi = 2
@@ -569,10 +570,11 @@ SGDPMM_performance = function(tau, iter_index, data_generation_method){
     kappa = 1
     alpha = .5
     beta = 2
-    gamma = 3
-    lambda = 1
-    phi_SGDPMM = SGDPMMSBM(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lambda, tau)
-  } else if(data_generation_method == "preferattach"){
+    eta = 5
+    zeta = 2
+    m = 10
+    phi_SGDPMM = SGDPMMSBM(X, niterations, delta, xi, rou, kappa, alpha, beta, eta, zeta, m, tau)
+  } else if (data_generation_method == "preferattach") {
     niterations = 300
     delta = 5
     xi = .5
@@ -580,22 +582,25 @@ SGDPMM_performance = function(tau, iter_index, data_generation_method){
     kappa = 10
     alpha = 1
     beta = 3
-    gamma = 2
-    lambda = 1
-    phi_SGDPMM = SGDPMMSBM(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lambda, tau)
+    eta = 5
+    zeta = 2
+    m = 10
+    phi_SGDPMM = SGDPMMSBM(X, niterations, delta, xi, rou, kappa, alpha, beta, eta, zeta, m, tau)
   }
-  TDR_SGDPMM =  sum(A * phi_SGDPMM, na.rm = TRUE) / sum(as.matrix(A), na.rm = TRUE)
+  # true discovery rate
+  TDR_SGDPMM = sum(A * phi_SGDPMM, na.rm = TRUE) / sum(as.matrix(A), na.rm = TRUE)
+  # false discovery rate
   FDR_SGDPMM = sum((1 - A) * phi_SGDPMM, na.rm = TRUE) / pmax(sum(phi_SGDPMM, na.rm = TRUE), 1)
   end_sgdpmm = Sys.time()
   elapse_sgdpmm = end_sgdpmm - start_sgdpmm
   cat("SGDPMMSBM fitting ends: \n")
-  print(elapse_sgdomm)
+  print(elapse_sgdpmm)
   
   start_rbfk = Sys.time()
   cat("Rebafka's algorithm starts.\n")
   #Rebafka
   fit_rbfk = noisySBM::fitNSBM(X, model = "Gauss01")
-  infer_rbfk = noisySBM::graphInference(X, nodeClustering = fit_rbfk[[2]]$clustering, theta = fit_rbfk[[2]]$theta, alpha = tau, modelFamily = "Gauss")
+  infer_rbfk = noisySBM::graphInference(X, fit_rbfk[[2]]$clustering, fit_rbfk[[2]]$theta, alpha = tau, modelFamily = "Gauss")
   phi_rbfk = infer_rbfk$A
   TDR_rbfk =  sum(A * phi_rbfk, na.rm = TRUE) / sum(as.matrix(A), na.rm = TRUE)
   FDR_rbfk = sum((1 - A) * phi_rbfk, na.rm = TRUE) / pmax(sum(phi_rbfk, na.rm = TRUE), 1)
@@ -667,7 +672,7 @@ sjob = slurm_apply(
   ),
   pkgs = c(
     "dplyr","tidyr","ggplot2","fossil","invgamma","MASS",
-    "igraph","noisySBM","noisysbmGGM"
+    "igraph","noisySBM","noisysbmGGM","ConjugateDP"
   )
 )
 cat("Slurm job submitted!\n")
