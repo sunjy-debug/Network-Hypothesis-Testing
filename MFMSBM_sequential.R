@@ -122,7 +122,7 @@ MFMSBM_estimation = function(X, niterations, delta, xi, rou, kappa, alpha, beta,
     }
   }
   
-  History = vector("list", niterations)
+  # History = vector("list", niterations)
   
   # Vn: a set of pre-calculated logarithmic normalization constants related to the number of clusters
   # adjusting the probability weight of the number of clusters by encoding the prior probability structure of the number of clusters
@@ -319,7 +319,7 @@ MFMSBM_estimation = function(X, niterations, delta, xi, rou, kappa, alpha, beta,
       }
     }
     
-    History[[niter]] = list(Zout = Z, Aout = A)
+    # History[[niter]] = list(Zout = Z, Aout = A)
     if (niter %% 10 == 0) {
       cat("Iteration:", niter, "Cluster Number:", k, "\n", Z,"\n")
     }
@@ -410,7 +410,7 @@ MFMSBM_estimation = function(X, niterations, delta, xi, rou, kappa, alpha, beta,
   q = q + t(q)
   diag(q) = NA
   
-  return(q)
+  return(list(q = q, Z = Z))
 }
 
 MFMSBM_inference = function(q, tau) {
@@ -458,7 +458,7 @@ NSBM_generation = function(){
       X[j,i] = X[i,j]
     }
   }
-  return(list(A = A, X = X))
+  return(list(A = A, X = X, Z = Z))
 }
 
 # star A setting
@@ -530,6 +530,7 @@ preferattachgraph = function(){
 
 ## take the data into the MFM-SBM algorithm
 MFMSBM_performance = function(data_generation_method, tau = c(0.005, 0.025, 0.05, 0.1, 0.15, 0.25)){
+  rindex_MFM = NA
   start = Sys.time()
   start_data = Sys.time()
   cat("Data generation starts.\n")
@@ -544,6 +545,9 @@ MFMSBM_performance = function(data_generation_method, tau = c(0.005, 0.025, 0.05
   }
   X = data_generation$X
   A = data_generation$A
+  if(data_generation_method == "NSBM"){
+    Z = data_generation$Z
+  }
   n = nrow(X)
   end_data = Sys.time()
   elapse_data = end_data - start_data
@@ -564,9 +568,10 @@ MFMSBM_performance = function(data_generation_method, tau = c(0.005, 0.025, 0.05
     gamma = 10
     lambda = 2
     fit_MFM = MFMSBM_estimation(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lambda)
-    infer_MFM = lapply(tau, function(x) MFMSBM_inference(fit_MFM, x))
+    infer_MFM = lapply(tau, function(x) MFMSBM_inference(fit_MFM$q, x))
     TDR_MFM =  sapply(infer_MFM, function(x) sum(A * x, na.rm = TRUE) / sum(as.matrix(A), na.rm = TRUE))
     FDR_MFM = sapply(infer_MFM, function(x) sum((1 - A) * x, na.rm = TRUE) / pmax(sum(x, na.rm = TRUE), 1))
+    rindex_MFM = rand.index(fit_MFM$Z, Z)
   } else if(data_generation_method == "star"){
     niterations = 300
     delta = 2
@@ -578,7 +583,7 @@ MFMSBM_performance = function(data_generation_method, tau = c(0.005, 0.025, 0.05
     gamma = 1
     lambda = .4
     fit_MFM = MFMSBM_estimation(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lambda)
-    infer_MFM = lapply(tau, function(x) MFMSBM_inference(fit_MFM, x))
+    infer_MFM = lapply(tau, function(x) MFMSBM_inference(fit_MFM$q, x))
     TDR_MFM =  sapply(infer_MFM, function(x) sum(A * x, na.rm = TRUE) / sum(as.matrix(A), na.rm = TRUE))
     FDR_MFM = sapply(infer_MFM, function(x) sum((1 - A) * x, na.rm = TRUE) / pmax(sum(x, na.rm = TRUE), 1))
   } else if(data_generation_method == "randombi"){
@@ -592,7 +597,7 @@ MFMSBM_performance = function(data_generation_method, tau = c(0.005, 0.025, 0.05
     gamma = 3
     lambda = 1
     fit_MFM = MFMSBM_estimation(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lambda)
-    infer_MFM = lapply(tau, function(x) MFMSBM_inference(fit_MFM, x))
+    infer_MFM = lapply(tau, function(x) MFMSBM_inference(fit_MFM$q, x))
     TDR_MFM =  sapply(infer_MFM, function(x) sum(A * x, na.rm = TRUE) / sum(as.matrix(A), na.rm = TRUE))
     FDR_MFM = sapply(infer_MFM, function(x) sum((1 - A) * x, na.rm = TRUE) / pmax(sum(x, na.rm = TRUE), 1))
   } else if(data_generation_method == "preferattach"){
@@ -606,7 +611,7 @@ MFMSBM_performance = function(data_generation_method, tau = c(0.005, 0.025, 0.05
     gamma = 2
     lambda = 1
     fit_MFM = MFMSBM_estimation(X, niterations, delta, xi, rou, kappa, alpha, beta, gamma, lambda)
-    infer_MFM = lapply(tau, function(x) MFMSBM_inference(fit_MFM, x))
+    infer_MFM = lapply(tau, function(x) MFMSBM_inference(fit_MFM$q, x))
     TDR_MFM =  sapply(infer_MFM, function(x) sum(A * x, na.rm = TRUE) / sum(as.matrix(A), na.rm = TRUE))
     FDR_MFM = sapply(infer_MFM, function(x) sum((1 - A) * x, na.rm = TRUE) / pmax(sum(x, na.rm = TRUE), 1))
   }
@@ -645,7 +650,8 @@ MFMSBM_performance = function(data_generation_method, tau = c(0.005, 0.025, 0.05
   return(list(TDR_MFM = TDR_MFM, FDR_MFM = FDR_MFM, 
               TDR_rbfk = TDR_rbfk, FDR_rbfk = FDR_rbfk, 
               TDR_klln = TDR_klln, FDR_klln = FDR_klln,
-              elapse_mfm = elapse_mfm, elapse_rbfk = elapse_rbfk, elapse_klln = elapse_klln))
+              elapse_mfm = elapse_mfm, elapse_rbfk = elapse_rbfk, elapse_klln = elapse_klln,
+              rindex_mfm = rindex_MFM))
 }
 
 cluster_apply = function(iteration, data_generation_method = "NSBM") {
@@ -658,7 +664,8 @@ cluster_apply = function(iteration, data_generation_method = "NSBM") {
     TDR_klln = result$TDR_klln, FDR_klln = result$FDR_klln,
     elapse_mfm = result$elapse_mfm, 
     elapse_rbfk = result$elapse_rbfk, 
-    elapse_klln = result$elapse_klln
+    elapse_klln = result$elapse_klln,
+    rindex_mfm = result$rindex_mfm
   ))
 }
 
@@ -714,6 +721,7 @@ FDR_klln_mean = apply(FDR_klln, 2, mean(na.rm = TRUE))
 elapse_mfm = sapply(results, function(x) as.numeric(x[["elapse_mfm"]],  units = "secs"))
 elapse_rbfk = sapply(results, function(x) as.numeric(x[["elapse_rbfk"]],  units = "secs"))
 elapse_klln = sapply(results, function(x) as.numeric(x[["elapse_klln"]],  units = "secs"))
+rindex_mfm = sapply(results, function(x) as.numeric(x[["rindex_mfm"]]))
 
 df_results <- data.frame(
   tau   = rep(tau, 2),
@@ -779,6 +787,19 @@ p3 =
   theme_minimal(base_size = 12) +
   theme(legend.position = "none")
 ggsave(file.path(outdir, "runtime boxplot of MFMSBM (sequential).png"), p3, width = 6, height = 4, dpi = 300)
+
+df_rand = data.frame(method = "MFM-SBM", RI = rindex_mfm)
+
+p4 = 
+  ggplot(df_rand, aes(x = method, y = RI, fill = method)) +
+  geom_boxplot(width = 0.55, outlier.shape = NA, alpha = 0.7) +
+  geom_jitter(width = 0.15, height = 0, size = 0.9, alpha = 0.35) +
+  coord_cartesian(ylim = c(0, 1)) + 
+  labs(title = "Rand Index of MFMSBM (sequential)", x = NULL, y = "Rand Index") +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "none")
+ggsave(file.path(outdir, "Rand Index of MFMSBM (sequential).png"), p4, width = 6, height = 4, dpi = 300)
+
 
 cleanup_files(sjob)
 cat("Output job ends!\n")
