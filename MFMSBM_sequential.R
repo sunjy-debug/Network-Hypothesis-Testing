@@ -678,7 +678,7 @@ niteration = 500
 cat("Submitting Slurm job...\n")
 sjob = slurm_apply(
   cluster_apply,
-  iteration = 1:niteration,
+  params = data.frame(iteration = 1:niteration),
   jobname = "mfmsbm-seq",
   nodes = niteration,
   cpus_per_node = 10,
