@@ -73,7 +73,7 @@ logmargs = function(Z, X, j, alpha, beta, rou, kappa, delta, xi)
 }
 
 ## function for Collapsed sampler for SGDPMM-SBM (main algorithm)
-SGDPMMSBM = function(X, niterations, delta, xi, rou, kappa, alpha, beta, eta, zeta, m, tau)
+SGDPMMSBM_estimation = function(X, niterations, delta, xi, rou, kappa, alpha, beta, eta, zeta, m)
 {
   ## Model: X_{ij}|A_{ij},Z \sim (1 - A_{ij}) N(0,1) + A_{ij} N(mu_{Z_i,Z_j}, sigma^2_{Z_i,Z_j})
   ##        A_{ij}|Z,Q \sim Ber(Q_{Z_i,Z_j}) ##
@@ -123,7 +123,7 @@ SGDPMMSBM = function(X, niterations, delta, xi, rou, kappa, alpha, beta, eta, ze
     }
   }
   gamma = rSg(1, eta, zeta, m)
-  History = vector("list", niterations)
+  # History = vector("list", niterations)
   
   ##start Gibb's sampling
   for (niter in 1:niterations)
@@ -309,7 +309,7 @@ SGDPMMSBM = function(X, niterations, delta, xi, rou, kappa, alpha, beta, eta, ze
     
     gamma = rSg_posterior(1, eta, zeta, m, k, n)
     
-    History[[niter]] = list(Zout = Z, Aout = A)
+    # History[[niter]] = list(Zout = Z, Aout = A)
     if (niter %% 10 == 0) {
       cat("Iteration:", niter, "Cluster Number:", k, "\n", Z,"\n")
     }
@@ -400,12 +400,16 @@ SGDPMMSBM = function(X, niterations, delta, xi, rou, kappa, alpha, beta, eta, ze
   q = q + t(q)
   diag(q) = NA
   
+  return(list(q = q, Z = Z))
+}
+
+SGDPMMSBM_inference = function(q, tau) {
   # calculate phi-value
+  n = nrow(q)
   phi = matrix(0, n, n)
   phi[lower.tri(phi)] = (q[lower.tri(q)] < tau)
   phi = phi + t(phi)
   diag(phi) = NA
-  
   return(phi)
 }
 
@@ -444,7 +448,7 @@ NSBM_generation = function(){
       X[j,i] = X[i,j]
     }
   }
-  return(list(A = A, X = X))
+  return(list(A = A, X = X, Z = Z))
 }
 
 # star A setting
@@ -515,7 +519,7 @@ preferattachgraph = function(){
 }
 
 ## take the data into the SGDPMM-SBM algorithm
-SGDPMM_performance = function(tau, iter_index, data_generation_method){
+SGDPMMSBM_performance = function(data_generation_method, tau = c(0.005, 0.025, 0.05, 0.1, 0.15, 0.25)){
   start = Sys.time()
   start_data = Sys.time()
   cat("Data generation starts.\n")
@@ -530,6 +534,9 @@ SGDPMM_performance = function(tau, iter_index, data_generation_method){
   }
   X = data_generation$X
   A = data_generation$A
+  if(data_generation_method == "NSBM"){
+    Z = data_generation$Z
+  }
   n = nrow(X)
   end_data = Sys.time()
   elapse_data = end_data - start_data
@@ -549,7 +556,11 @@ SGDPMM_performance = function(tau, iter_index, data_generation_method){
     eta = 2.5
     zeta = 2
     m = 5
-    phi_SGDPMM = SGDPMMSBM(X, niterations, delta, xi, rou, kappa, alpha, beta, eta, zeta, m, tau)
+    fit_SGDPMM = SGDPMMSBM_estimation(X, niterations, delta, xi, rou, kappa, alpha, beta, eta, zeta, m)
+    infer_SGDPMM = lapply(tau, function(x) SGDPMMSBM_inference(fit_SGDPMM$q, x))
+    TDR_SGDPMM =  sapply(infer_SGDPMM, function(x) sum(A * x, na.rm = TRUE) / sum(as.matrix(A), na.rm = TRUE))
+    FDR_SGDPMM = sapply(infer_SGDPMM, function(x) sum((1 - A) * x, na.rm = TRUE) / pmax(sum(x, na.rm = TRUE), 1))
+    rindex_SGDPMM = rand.index(fit_SGDPMM$Z, Z)
   } else if (data_generation_method == "star") {
     niterations = 300
     delta = 2
@@ -561,7 +572,10 @@ SGDPMM_performance = function(tau, iter_index, data_generation_method){
     eta = 5
     zeta = 2
     m = 10
-    phi_SGDPMM = SGDPMMSBM(X, niterations, delta, xi, rou, kappa, alpha, beta, eta, zeta, m, tau)
+    fit_SGDPMM = SGDPMMSBM_estimation(X, niterations, delta, xi, rou, kappa, alpha, beta, eta, zeta, m)
+    infer_SGDPMM = lapply(tau, function(x) SGDPMMSBM_inference(fit_SGDPMM$q, x))
+    TDR_SGDPMM =  sapply(infer_SGDPMM, function(x) sum(A * x, na.rm = TRUE) / sum(as.matrix(A), na.rm = TRUE))
+    FDR_SGDPMM = sapply(infer_SGDPMM, function(x) sum((1 - A) * x, na.rm = TRUE) / pmax(sum(x, na.rm = TRUE), 1))
   } else if (data_generation_method == "randombi") {
     niterations = 300
     delta = 2
@@ -573,7 +587,10 @@ SGDPMM_performance = function(tau, iter_index, data_generation_method){
     eta = 5
     zeta = 2
     m = 10
-    phi_SGDPMM = SGDPMMSBM(X, niterations, delta, xi, rou, kappa, alpha, beta, eta, zeta, m, tau)
+    fit_SGDPMM = SGDPMMSBM_estimation(X, niterations, delta, xi, rou, kappa, alpha, beta, eta, zeta, m)
+    infer_SGDPMM = lapply(tau, function(x) SGDPMMSBM_inference(fit_SGDPMM$q, x))
+    TDR_SGDPMM =  sapply(infer_SGDPMM, function(x) sum(A * x, na.rm = TRUE) / sum(as.matrix(A), na.rm = TRUE))
+    FDR_SGDPMM = sapply(infer_SGDPMM, function(x) sum((1 - A) * x, na.rm = TRUE) / pmax(sum(x, na.rm = TRUE), 1))
   } else if (data_generation_method == "preferattach") {
     niterations = 300
     delta = 5
@@ -585,12 +602,11 @@ SGDPMM_performance = function(tau, iter_index, data_generation_method){
     eta = 5
     zeta = 2
     m = 10
-    phi_SGDPMM = SGDPMMSBM(X, niterations, delta, xi, rou, kappa, alpha, beta, eta, zeta, m, tau)
+    fit_SGDPMM = SGDPMMSBM_estimation(X, niterations, delta, xi, rou, kappa, alpha, beta, eta, zeta, m)
+    infer_SGDPMM = lapply(tau, function(x) SGDPMMSBM_inference(fit_SGDPMM$q, x))
+    TDR_SGDPMM =  sapply(infer_SGDPMM, function(x) sum(A * x, na.rm = TRUE) / sum(as.matrix(A), na.rm = TRUE))
+    FDR_SGDPMM = sapply(infer_SGDPMM, function(x) sum((1 - A) * x, na.rm = TRUE) / pmax(sum(x, na.rm = TRUE), 1))
   }
-  # true discovery rate
-  TDR_SGDPMM = sum(A * phi_SGDPMM, na.rm = TRUE) / sum(as.matrix(A), na.rm = TRUE)
-  # false discovery rate
-  FDR_SGDPMM = sum((1 - A) * phi_SGDPMM, na.rm = TRUE) / pmax(sum(phi_SGDPMM, na.rm = TRUE), 1)
   end_sgdpmm = Sys.time()
   elapse_sgdpmm = end_sgdpmm - start_sgdpmm
   cat("SGDPMMSBM fitting ends: \n")
@@ -600,10 +616,9 @@ SGDPMM_performance = function(tau, iter_index, data_generation_method){
   cat("Rebafka's algorithm starts.\n")
   #Rebafka
   fit_rbfk = noisySBM::fitNSBM(X, model = "Gauss01")
-  infer_rbfk = noisySBM::graphInference(X, fit_rbfk[[2]]$clustering, fit_rbfk[[2]]$theta, alpha = tau, modelFamily = "Gauss")
-  phi_rbfk = infer_rbfk$A
-  TDR_rbfk =  sum(A * phi_rbfk, na.rm = TRUE) / sum(as.matrix(A), na.rm = TRUE)
-  FDR_rbfk = sum((1 - A) * phi_rbfk, na.rm = TRUE) / pmax(sum(phi_rbfk, na.rm = TRUE), 1)
+  infer_rbfk = lapply(tau, function(x) noisySBM::graphInference(X, nodeClustering = fit_rbfk[[2]]$clustering, theta = fit_rbfk[[2]]$theta, alpha = x, modelFamily = "Gauss")$A)
+  TDR_rbfk =  sapply(infer_rbfk, function(x) sum(A * x, na.rm = TRUE) / sum(as.matrix(A), na.rm = TRUE))
+  FDR_rbfk = sapply(infer_rbfk, function(x) sum((1 - A) * x, na.rm = TRUE) / pmax(sum(x, na.rm = TRUE), 1))
   end_rbfk = Sys.time()
   elapse_rbfk = end_rbfk - start_rbfk
   cat("Rebafka's algorithm ends: \n")
@@ -612,10 +627,9 @@ SGDPMM_performance = function(tau, iter_index, data_generation_method){
   start_klln = Sys.time()
   cat("Kilian's algorithm starts.\n")
   #Kilian
-  infer_klln = noisysbmGGM::main_noisySBM(X, NIG = TRUE, alpha = tau)
-  phi_klln = infer_klln$A
-  TDR_klln =  sum(A * phi_klln, na.rm = TRUE) / sum(as.matrix(A), na.rm = TRUE)
-  FDR_klln = sum((1 - A) * phi_klln, na.rm = TRUE) / pmax(sum(phi_klln, na.rm = TRUE), 1)
+  infer_klln = lapply(tau, function(x) noisysbmGGM::main_noisySBM(X, NIG = TRUE, alpha = x)$A)
+  TDR_klln =  sapply(infer_klln, function(x) sum(A * x, na.rm = TRUE) / sum(as.matrix(A), na.rm = TRUE))
+  FDR_klln = sapply(infer_klln, function(x) sum((1 - A) * x, na.rm = TRUE) / pmax(sum(x, na.rm = TRUE), 1))
   end_klln = Sys.time()
   elapse_klln = end_klln - start_klln
   cat("Killian's algorithm ends: \n")
@@ -625,49 +639,43 @@ SGDPMM_performance = function(tau, iter_index, data_generation_method){
   elapse = end - start
   cat("All the models end.\n")
   print(elapse)
-  return(list(tau = tau,
-              TDR_SGDPMM = TDR_SGDPMM, FDR_SGDPMM = FDR_SGDPMM, 
+  return(list(TDR_SGDPMM = TDR_SGDPMM, FDR_SGDPMM = FDR_SGDPMM, 
               TDR_rbfk = TDR_rbfk, FDR_rbfk = FDR_rbfk, 
-              TDR_klln = TDR_klln, FDR_klln = FDR_klln))
+              TDR_klln = TDR_klln, FDR_klln = FDR_klln,
+              elapse_sgdpmm = elapse_sgdpmm, elapse_rbfk = elapse_rbfk, elapse_klln = elapse_klln,
+              rindex_sgdpmm = rindex_SGDPMM))
 }
 
-cluster_apply = function(tau, iteration, data_generation_method = "NSBM") {
+cluster_apply = function(iteration, data_generation_method = "NSBM") {
   id = as.integer(Sys.getenv("SLURM_ARRAY_TASK_ID", "0"))
   set.seed(iteration + 1000 * id)
-  
-  result = SGDPMM_performance(tau, iteration, data_generation_method)
-  return(c(
-    tau = result$tau,
+  result = SGDPMMSBM_performance(data_generation_method)
+  return(list(
     TDR_SGDPMM = result$TDR_SGDPMM, FDR_SGDPMM = result$FDR_SGDPMM,
     TDR_rbfk = result$TDR_rbfk, FDR_rbfk = result$FDR_rbfk,
-    TDR_klln = result$TDR_klln, FDR_klln = result$FDR_klln
+    TDR_klln = result$TDR_klln, FDR_klln = result$FDR_klln,
+    elapse_sgdpmm = result$elapse_sgdpmm, 
+    elapse_rbfk = result$elapse_rbfk, 
+    elapse_klln = result$elapse_klln,
+    rindex_sgdpmm = result$rindex_sgdpmm
   ))
 }
-
-taus = c(0.005, 0.025, 0.05, 0.1, 0.15, 0.25)
-niter = 100
-params = expand.grid(
-  tau = taus,
-  iteration = 1:niter,
-  data_generation_method = "NSBM",
-  KEEP.OUT.ATTRS = FALSE,
-  stringsAsFactors = FALSE
-)
 
 library(rslurm)
 outdir <- Sys.getenv("OUTDIR", unset = file.path(getwd(), "Output/run_sgdpmmsbm_sim"))
 if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
 options(bitmapType = "cairo")
 
+niteration = 500
 cat("Submitting Slurm job...\n")
 sjob = slurm_apply(
   cluster_apply,
-  params,
+  params = data.frame(iteration = 1:niteration),
   jobname = "sgdpmmsbm-sim",
-  nodes = 600,
+  nodes = niteration,
   cpus_per_node = 10,
   global_objects = c(
-    "loglike", "logmargs", "SGDPMMSBM", "SGDPMM_performance",
+    "loglike", "logmargs", "SGDPMMSBM_estimation", "SGDPMMSBM_inference", "SGDPMMSBM_performance",
     "NSBM_generation", "stargraph", "randombipartitegraph", "preferattachgraph"
   ),
   pkgs = c(
@@ -678,35 +686,38 @@ sjob = slurm_apply(
 cat("Slurm job submitted!\n")
 
 cat("Output job begins...\n")
-result = get_slurm_out(sjob, outtype = "table")
-result <- data.frame(result) %>%
-  mutate(
-    tau = as.numeric(tau),
-    TDR_SGDPMM = as.numeric(TDR_SGDPMM), FDR_SGDPMM = as.numeric(FDR_SGDPMM),
-    TDR_rbfk = as.numeric(TDR_rbfk), FDR_rbfk = as.numeric(FDR_rbfk),
-    TDR_klln = as.numeric(TDR_klln), FDR_klln = as.numeric(FDR_klln)
-  )
+results = get_slurm_out(sjob, outtype = "raw")
+tau = c(0.005, 0.025, 0.05, 0.1, 0.15, 0.25)
 
-taus = sort(unique(result$tau))
+TDR_SGDPMM = do.call(rbind, lapply(results, function(x) x[["TDR_SGDPMM"]]))
+TDR_SGDPMM_mean = apply(TDR_SGDPMM, 2, mean(na.rm = TRUE))
+TDR_SGDPMM_sd = apply(TDR_SGDPMM, 2, sd(na.rm = TRUE))
+TDR_SGDPMM_upper = pmin(TDR_SGDPMM_mean + qnorm(.975) * TDR_SGDPMM_sd / sqrt(niteration), 1)
+TDR_SGDPMM_lower = pmax(TDR_SGDPMM_mean - qnorm(.975) * TDR_SGDPMM_sd / sqrt(niteration), 0)
 
-TDR_SGDPMM_mean  <- sapply(taus, function(x) mean(result$TDR_SGDPMM[result$tau == x], na.rm=TRUE))
-TDR_SGDPMM_sd    <- sapply(taus, function(x) sd  (result$TDR_SGDPMM[result$tau == x], na.rm=TRUE))
-TDR_SGDPMM_upper <- pmin(TDR_SGDPMM_mean + qnorm(.975) * TDR_SGDPMM_sd, 1)
-TDR_SGDPMM_lower <- pmax(TDR_SGDPMM_mean - qnorm(.975) * TDR_SGDPMM_sd, 0)
+FDR_SGDPMM = do.call(rbind, lapply(results, function(x) x[["FDR_SGDPMM"]]))
+FDR_SGDPMM_mean = apply(FDR_SGDPMM, 2, mean(na.rm = TRUE))
+FDR_SGDPMM_sd = apply(FDR_SGDPMM, 2, sd(na.rm = TRUE))
+FDR_SGDPMM_upper = pmin(FDR_SGDPMM_mean + qnorm(.975) * FDR_SGDPMM_sd / sqrt(niteration), 1)
+FDR_SGDPMM_lower = pmax(FDR_SGDPMM_mean - qnorm(.975) * FDR_SGDPMM_sd / sqrt(niteration), 0)
 
-FDR_SGDPMM_mean  <- sapply(taus, function(x) mean(result$FDR_SGDPMM[result$tau == x], na.rm=TRUE))
-FDR_SGDPMM_sd    <- sapply(taus, function(x) sd  (result$FDR_SGDPMM[result$tau == x], na.rm=TRUE))
-FDR_SGDPMM_upper <- pmin(FDR_SGDPMM_mean + qnorm(.975) * FDR_SGDPMM_sd, 1)
-FDR_SGDPMM_lower <- pmax(FDR_SGDPMM_mean - qnorm(.975) * FDR_SGDPMM_sd, 0)
+TDR_rbfk = do.call(rbind, lapply(results, function(x) x[["TDR_rbfk"]]))
+TDR_rbfk_mean = apply(TDR_rbfk, 2, mean(na.rm = TRUE))
+FDR_rbfk = do.call(rbind, lapply(results, function(x) x[["FDR_rbfk"]]))
+FDR_rbfk_mean = apply(FDR_rbfk, 2, mean(na.rm = TRUE))
+TDR_klln = do.call(rbind, lapply(results, function(x) x[["TDR_klln"]]))
+TDR_klln_mean = apply(TDR_klln, 2, mean(na.rm = TRUE))
+FDR_klln = do.call(rbind, lapply(results, function(x) x[["FDR_klln"]]))
+FDR_klln_mean = apply(FDR_klln, 2, mean(na.rm = TRUE))
 
-TDR_rbfk_mean <- sapply(taus, function(x) mean(result$TDR_rbfk[result$tau == x], na.rm=TRUE))
-FDR_rbfk_mean <- sapply(taus, function(x) mean(result$FDR_rbfk[result$tau == x], na.rm=TRUE))
-TDR_klln_mean <- sapply(taus, function(x) mean(result$TDR_klln[result$tau == x], na.rm=TRUE))
-FDR_klln_mean <- sapply(taus, function(x) mean(result$FDR_klln[result$tau == x], na.rm=TRUE))
+elapse_sgdpmm = sapply(results, function(x) as.numeric(x[["elapse_sgdpmm"]],  units = "secs"))
+elapse_rbfk = sapply(results, function(x) as.numeric(x[["elapse_rbfk"]],  units = "secs"))
+elapse_klln = sapply(results, function(x) as.numeric(x[["elapse_klln"]],  units = "secs"))
+rindex_sgdpmm = sapply(results, function(x) as.numeric(x[["rindex_sgdpmm"]]))
 
 df_results <- data.frame(
-  tau   = rep(taus, 2),
-  metric= c(rep("TDR", length(taus)), rep("FDR", length(taus))),
+  tau   = rep(tau, 2),
+  metric= c(rep("TDR", length(tau)), rep("FDR", length(tau))),
   mean  = c(TDR_SGDPMM_mean, FDR_SGDPMM_mean),
   lower = c(TDR_SGDPMM_lower, FDR_SGDPMM_lower),
   upper = c(TDR_SGDPMM_upper, FDR_SGDPMM_upper)
@@ -722,18 +733,18 @@ p1 =
   theme_minimal() +
   scale_color_manual(values = c("TDR" = "#1f77b4", "FDR" = "#ff7f0e")) +
   scale_fill_manual(values = c("TDR" = "#1f77b4", "FDR" = "#ff7f0e")) +
-  scale_x_continuous(breaks = taus) +
+  scale_x_continuous(breaks = c(0.005, 0.025, 0.05, 0.1, 0.15, 0.25)) +
   theme(panel.grid.major = element_blank())
-ggsave(file.path(outdir, "SGDPMM-SBM_Evaluation_NSBM (apply).png"), plot = p1, width = 4, height = 6, dpi = 300)
+ggsave(file.path(outdir, "Simultaneous SGDPMM-SBM Evaluation.png"), plot = p1, width = 4, height = 6, dpi = 300)
 
 df_ROC <- data.frame(
-  tau       = taus,
+  tau          = tau,
   TDR_SGDPMM   = TDR_SGDPMM_mean,
   FDR_SGDPMM   = FDR_SGDPMM_mean,
-  TDR_rbfk  = TDR_rbfk_mean,
-  FDR_rbfk  = FDR_rbfk_mean,
-  TDR_klln  = TDR_klln_mean,
-  FDR_klln  = FDR_klln_mean
+  TDR_rbfk     = TDR_rbfk_mean,
+  FDR_rbfk     = FDR_rbfk_mean,
+  TDR_klln     = TDR_klln_mean,
+  FDR_klln     = FDR_klln_mean
 ) %>%
   dplyr::select(tau, contains("FDR"), contains("TDR")) %>%
   tidyr::pivot_longer(
@@ -753,6 +764,34 @@ p2 =
                      labels = c("SGDPMM-SBM", "RBFK", "KLLN")) +
   labs(title = "ROC Curve (NSBM)", x = "FDR", y = "TDR")
 ggsave(file.path(outdir, "SGDPMMSBM (Simultaneous) ROC Curve (NSBM).png"), plot = p2, width = 4, height = 6, dpi = 300)
+
+df_time = rbind(
+  data.frame(method = "SGDPMM-SBM", seconds = elapse_sgdpmm),
+  data.frame(method = "RBFK",    seconds = elapse_rbfk),
+  data.frame(method = "KLLN",    seconds = elapse_klln)
+)
+
+p3 = 
+  ggplot(df_time, aes(x = method, y = seconds, fill = method)) +
+  geom_boxplot(width = 0.55, outlier.shape = NA, alpha = 0.7) +
+  geom_jitter(width = 0.15, height = 0, size = 0.9, alpha = 0.35) +
+  labs(title = "Runtime Comparison", x = NULL, y = "Elapsed time (seconds)") +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "none")
+ggsave(file.path(outdir, "runtime boxplot of SGDPMMSBM (Simultaneous).png"), p3, width = 6, height = 4, dpi = 300)
+
+df_rand = data.frame(method = "SGDPMM-SBM", RI = rindex_sgdpmm)
+
+p4 = 
+  ggplot(df_rand, aes(x = method, y = RI, fill = method)) +
+  geom_boxplot(width = 0.55, outlier.shape = NA, alpha = 0.7) +
+  geom_jitter(width = 0.15, height = 0, size = 0.9, alpha = 0.35) +
+  coord_cartesian(ylim = c(0, 1)) + 
+  labs(title = "Rand Index of SGDPMMSBM (Simultaneous)", x = NULL, y = "Rand Index") +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "none")
+ggsave(file.path(outdir, "Rand Index of SGDPMMSBM (Simultaneous).png"), p4, width = 6, height = 4, dpi = 300)
+
 
 cleanup_files(sjob)
 cat("Output job ends!\n")
