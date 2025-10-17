@@ -670,7 +670,7 @@ cluster_apply = function(iteration, data_generation_method = "NSBM") {
   id = as.integer(Sys.getenv("SLURM_ARRAY_TASK_ID", "0"))
   set.seed(iteration + 1000 * id)
   result = MFMSBM_performance(data_generation_method)
-  return(c(
+  return(list(
     TDR_MFM = result$TDR_MFM, FDR_MFM = result$FDR_MFM,
     TDR_rbfk = result$TDR_rbfk, FDR_rbfk = result$FDR_rbfk,
     TDR_klln = result$TDR_klln, FDR_klln = result$FDR_klln,
