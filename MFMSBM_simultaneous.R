@@ -704,3 +704,4 @@ sjob = slurm_apply(
   )
 )
 cat("Slurm job submitted!\n")
+rslurm::wait_slurm(sjob)
