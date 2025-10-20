@@ -11,20 +11,26 @@ SBM_visualization = function(input_dir, output_dir){
   results = do.call(c, lapply(files, readRDS))
   
   tau = c(0.005, 0.025, 0.05, 0.1, 0.15, 0.25)
-
-  TDR_MFM = do.call(rbind, lapply(results, function(x) if (is.list(x)) x[["TDR_MFM"]] else NULL))
-  TDR_MFM_mean = apply(TDR_MFM, 2, mean, na.rm = TRUE)
-  niteration = nrow(TDR_MFM)
-  TDR_MFM_sd = apply(TDR_MFM, 2, sd, na.rm = TRUE)
-  TDR_MFM_upper = pmin(TDR_MFM_mean + qnorm(.975) * TDR_MFM_sd / sqrt(niteration), 1)
-  TDR_MFM_lower = pmax(TDR_MFM_mean - qnorm(.975) * TDR_MFM_sd / sqrt(niteration), 0)
   
-  FDR_MFM = do.call(rbind, lapply(results, function(x) if (is.list(x)) x[["FDR_MFM"]] else NULL))
-  FDR_MFM_mean = apply(FDR_MFM, 2, mean, na.rm = TRUE)
-  niteration = nrow(FDR_MFM)
-  FDR_MFM_sd = apply(FDR_MFM, 2, sd, na.rm = TRUE)
-  FDR_MFM_upper = pmin(FDR_MFM_mean + qnorm(.975) * FDR_MFM_sd / sqrt(niteration), 1)
-  FDR_MFM_lower = pmax(FDR_MFM_mean - qnorm(.975) * FDR_MFM_sd / sqrt(niteration), 0)
+  if (input_dir == "_rslurm_mfmsbmseq" || input_dir == "_rslurm_mfmsbmsim"){
+    TDR = do.call(rbind, lapply(results, function(x) if (is.list(x)) x[["TDR_MFM"]] else NULL))
+    FDR = do.call(rbind, lapply(results, function(x) if (is.list(x)) x[["FDR_MFM"]] else NULL))
+  } else if (input_dir == "_rslurm_sgdpmmsbmseq" || input_dir == "_rslurm_sgdpmmsbmsim"){
+    TDR = do.call(rbind, lapply(results, function(x) if (is.list(x)) x[["TDR_SGDPMM"]] else NULL))
+    FDR = do.call(rbind, lapply(results, function(x) if (is.list(x)) x[["FDR_SGDPMM"]] else NULL))
+  }
+  
+  TDR_mean = apply(TDR, 2, mean, na.rm = TRUE)
+  niteration = nrow(TDR)
+  TDR_sd = apply(TDR, 2, sd, na.rm = TRUE)
+  TDR_upper = pmin(TDR_mean + qnorm(.975) * TDR_sd / sqrt(niteration), 1)
+  TDR_lower = pmax(TDR_mean - qnorm(.975) * TDR_sd / sqrt(niteration), 0)
+  
+  FDR_mean = apply(FDR, 2, mean, na.rm = TRUE)
+  niteration = nrow(FDR)
+  FDR_sd = apply(FDR, 2, sd, na.rm = TRUE)
+  FDR_upper = pmin(FDR_mean + qnorm(.975) * FDR_sd / sqrt(niteration), 1)
+  FDR_lower = pmax(FDR_mean - qnorm(.975) * FDR_sd / sqrt(niteration), 0)
   
   TDR_rbfk = do.call(rbind, lapply(results, function(x) if (is.list(x)) x[["TDR_rbfk"]] else NULL))
   TDR_rbfk_mean = apply(TDR_rbfk, 2, mean, na.rm = TRUE)
@@ -35,17 +41,22 @@ SBM_visualization = function(input_dir, output_dir){
   FDR_klln = do.call(rbind, lapply(results, function(x) if (is.list(x)) x[["FDR_klln"]]  else NULL))
   FDR_klln_mean = apply(FDR_klln, 2, mean, na.rm = TRUE)
   
-  elapse_mfm = sapply(results, function(x) as.numeric(x[["elapse_mfm"]],  units = "mins"))
+  if (input_dir == "_rslurm_mfmsbmseq" || input_dir == "_rslurm_mfmsbmsim"){
+    elapse = sapply(results, function(x) as.numeric(x[["elapse_mfm"]],  units = "mins"))
+    rindex = sapply(results, function(x) as.numeric(x[["rindex_mfm"]]))
+  } else if (input_dir == "_rslurm_sgdpmmsbmseq" || input_dir == "_rslurm_sgdpmmsbmsim"){
+    elapse = sapply(results, function(x) as.numeric(x[["elapse_sgdpmm"]],  units = "mins"))
+    rindex = sapply(results, function(x) as.numeric(x[["rindex_sgdpmm"]]))
+  }
   elapse_rbfk = sapply(results, function(x) as.numeric(x[["elapse_rbfk"]],  units = "mins"))
   elapse_klln = sapply(results, function(x) as.numeric(x[["elapse_klln"]],  units = "mins"))
-  rindex_mfm = sapply(results, function(x) as.numeric(x[["rindex_mfm"]]))
   
   df_results <- data.frame(
     tau   = rep(tau, 2),
     metric= c(rep("TDR", length(tau)), rep("FDR", length(tau))),
-    mean  = c(TDR_MFM_mean, FDR_MFM_mean),
-    lower = c(TDR_MFM_lower, FDR_MFM_lower),
-    upper = c(TDR_MFM_upper, FDR_MFM_upper)
+    mean  = c(TDR_mean, FDR_mean),
+    lower = c(TDR_lower, FDR_lower),
+    upper = c(TDR_upper, FDR_upper)
   )
   
   p1 = 
@@ -72,8 +83,8 @@ SBM_visualization = function(input_dir, output_dir){
   
   df_ROC <- data.frame(
     tau       = tau,
-    TDR_MFM   = TDR_MFM_mean,
-    FDR_MFM   = FDR_MFM_mean,
+    TDR   = TDR_mean,
+    FDR   = FDR_mean,
     TDR_rbfk  = TDR_rbfk_mean,
     FDR_rbfk  = FDR_rbfk_mean,
     TDR_klln  = TDR_klln_mean,
@@ -107,7 +118,7 @@ SBM_visualization = function(input_dir, output_dir){
   }
   
   df_time = rbind(
-    data.frame(method = "MFM-SBM", minutes = elapse_mfm),
+    data.frame(method = "MFM-SBM", minutes = elapse),
     data.frame(method = "RBFK",    minutes = elapse_rbfk),
     data.frame(method = "KLLN",    minutes = elapse_klln)
   )
@@ -129,7 +140,7 @@ SBM_visualization = function(input_dir, output_dir){
     ggsave(file.path(output_dir, "runtime boxplot of SGDPMMSBM (simultaneous).png"), p3, width = 6, height = 6, dpi = 300)
   }
   
-  df_rand = data.frame(method = "MFM-SBM", RI = rindex_mfm)
+  df_rand = data.frame(method = "MFM-SBM", RI = rindex)
   
   p4 = 
     ggplot(df_rand, aes(x = method, y = RI, fill = method)) +
