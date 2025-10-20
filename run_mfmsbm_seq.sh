@@ -16,3 +16,6 @@ unset DISPLAY
 export OUTDIR="$PWD/Output/run_mfmsbm_seq"
 
 Rscript --vanilla MFMSBM_sequential.R
+Rscript --vanilla -e 'source("SBM_visualization.R"); SBM_visualization("_rslurm_mfmsbmseq", "Output/run_mfmsbm_seq")'
+
+rm -rf _rslurm_mfmsbmseq

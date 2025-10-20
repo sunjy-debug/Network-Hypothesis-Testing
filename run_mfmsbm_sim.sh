@@ -15,3 +15,6 @@ unset DISPLAY
 export OUTDIR="$PWD/Output/run_mfmsbm_sim"
 
 Rscript --vanilla MFMSBM_simultaneous.R
+Rscript --vanilla -e 'source("SBM_visualization.R"); SBM_visualization("_rslurm_mfmsbmsim", "Output/run_mfmsbm_sim")'
+
+rm -rf _rslurm_mfmsbmsim
