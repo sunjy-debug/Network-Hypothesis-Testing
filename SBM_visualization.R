@@ -65,7 +65,7 @@ SBM_visualization = function(input_dir, output_dir){
     geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2, color = NA) +
     geom_point(size = 2) +
     geom_point(aes(x = tau, y = tau), size = 2, shape = 4, color = "red") +
-    labs(title = "MFM-SBM Performance Evaluation (NSBM)", x = "tau", y = "Metrics") +
+    labs(title = "Performance Evaluation (NSBM)", x = "tau", y = "Metrics") +
     theme_minimal() +
     scale_color_manual(values = c("TDR" = "#1f77b4", "FDR" = "#ff7f0e")) +
     scale_fill_manual(values = c("TDR" = "#1f77b4", "FDR" = "#ff7f0e")) +
@@ -96,16 +96,16 @@ SBM_visualization = function(input_dir, output_dir){
       names_to = c(".value", "Method"),
       names_sep = "_"
     ) %>%
-    dplyr::mutate(Method = factor(Method, levels = c("MFM", "rbfk", "klln")))
+    dplyr::mutate(Method = factor(Method, levels = c("SBM", "rbfk", "klln")))
   
   p2 = 
     ggplot(df_ROC, aes(x = FDR, y = TDR, color = Method, shape = Method)) +
     geom_line(linewidth = 1) +
     geom_point(size = 3) +
-    scale_color_manual(values = c("MFM" = "red", "rbfk" = "blue", "klln" = "green"),
-                       labels = c("MFM-SBM", "RBFK", "KLLN")) +
-    scale_shape_manual(values = c("MFM" = 17, "rbfk" = 16, "klln" = 15),
-                       labels = c("MFM-SBM", "RBFK", "KLLN")) +
+    scale_color_manual(values = c("SBM" = "red", "rbfk" = "blue", "klln" = "green"),
+                       labels = c("SBM", "RBFK", "KLLN")) +
+    scale_shape_manual(values = c("SBM" = 17, "rbfk" = 16, "klln" = 15),
+                       labels = c("SBM", "RBFK", "KLLN")) +
     labs(title = "ROC Curve (NSBM)", x = "FDR", y = "TDR")
   if(input_dir == "_rslurm_mfmsbmseq"){
     ggsave(file.path(output_dir, "MFMSBM (Sequential) ROC Curve (NSBM).png"), plot = p2, width = 6, height = 6, dpi = 300)
@@ -118,7 +118,7 @@ SBM_visualization = function(input_dir, output_dir){
   }
   
   df_time = rbind(
-    data.frame(method = "MFM-SBM", minutes = elapse),
+    data.frame(method = "SBM", minutes = elapse),
     data.frame(method = "RBFK",    minutes = elapse_rbfk),
     data.frame(method = "KLLN",    minutes = elapse_klln)
   )
@@ -140,14 +140,14 @@ SBM_visualization = function(input_dir, output_dir){
     ggsave(file.path(output_dir, "runtime boxplot of SGDPMMSBM (simultaneous).png"), p3, width = 6, height = 6, dpi = 300)
   }
   
-  df_rand = data.frame(method = "MFM-SBM", RI = rindex)
+  df_rand = data.frame(method = "SBM", RI = rindex)
   
   p4 = 
     ggplot(df_rand, aes(x = method, y = RI, fill = method)) +
     geom_boxplot(width = 0.55, outlier.shape = NA, alpha = 0.7) +
     geom_jitter(width = 0.15, height = 0, size = 0.9, alpha = 0.35) +
     coord_cartesian(ylim = c(0, 1)) + 
-    labs(title = "Rand Index of MFMSBM (sequential)", x = NULL, y = "Rand Index") +
+    labs(title = "Rand Index", x = NULL, y = "Rand Index") +
     theme_minimal(base_size = 12) +
     theme(legend.position = "none")
   if(input_dir == "_rslurm_mfmsbmseq"){
