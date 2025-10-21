@@ -12,6 +12,7 @@ library(MASS)
 library(igraph)
 library(noisySBM)
 library(noisysbmGGM)
+source("noisysbmGGM_decouple.R")
 
 ## Function for log-likelihood related to jth observation
 loglike = function(Z, Q, mu, sigma, X, j, n)
@@ -560,7 +561,7 @@ SGDPMMSBM_performance = function(data_generation_method, tau = c(0.005, 0.025, 0
     infer_SGDPMM = lapply(tau, function(x) SGDPMMSBM_inference(fit_SGDPMM$q, x))
     TDR_SGDPMM =  sapply(infer_SGDPMM, function(x) sum(A * x, na.rm = TRUE) / sum(as.matrix(A), na.rm = TRUE))
     FDR_SGDPMM = sapply(infer_SGDPMM, function(x) sum((1 - A) * x, na.rm = TRUE) / pmax(sum(x, na.rm = TRUE), 1))
-    rindex_SGDPMM = rand.index(fit_SGDPMM$Z, Z)
+    rindex_SGDPMM = adj.rand.index(fit_SGDPMM$Z, Z)
   } else if (data_generation_method == "star") {
     niterations = 300
     delta = 2
@@ -619,6 +620,7 @@ SGDPMMSBM_performance = function(data_generation_method, tau = c(0.005, 0.025, 0
   infer_rbfk = lapply(tau, function(x) noisySBM::graphInference(X, nodeClustering = fit_rbfk[[2]]$clustering, theta = fit_rbfk[[2]]$theta, alpha = x, modelFamily = "Gauss")$A)
   TDR_rbfk =  sapply(infer_rbfk, function(x) sum(A * x, na.rm = TRUE) / sum(as.matrix(A), na.rm = TRUE))
   FDR_rbfk = sapply(infer_rbfk, function(x) sum((1 - A) * x, na.rm = TRUE) / pmax(sum(x, na.rm = TRUE), 1))
+  rindex_rbfk = adj.rand.index(fit_rbfk[[2]]$clustering, Z)
   end_rbfk = Sys.time()
   elapse_rbfk = end_rbfk - start_rbfk
   cat("Rebafka's algorithm ends: \n")
@@ -627,9 +629,11 @@ SGDPMMSBM_performance = function(data_generation_method, tau = c(0.005, 0.025, 0
   start_klln = Sys.time()
   cat("Kilian's algorithm starts.\n")
   #Kilian
-  infer_klln = lapply(tau, function(x) noisysbmGGM::main_noisySBM(X, NIG = TRUE, alpha = x)$A)
+  fit_klln = main_noisySBM_fit(X, NIG = TRUE)
+  infer_klln = lapply(tau, function(x) main_noisySBM_infer(fit_klln$Rho, fit_klln$theta, fit_klln$Z, X, alpha = x)$A)
   TDR_klln =  sapply(infer_klln, function(x) sum(A * x, na.rm = TRUE) / sum(as.matrix(A), na.rm = TRUE))
   FDR_klln = sapply(infer_klln, function(x) sum((1 - A) * x, na.rm = TRUE) / pmax(sum(x, na.rm = TRUE), 1))
+  rindex_klln = adj.rand.index(fit_klln$Z, Z)
   end_klln = Sys.time()
   elapse_klln = end_klln - start_klln
   cat("Killian's algorithm ends: \n")
@@ -643,7 +647,7 @@ SGDPMMSBM_performance = function(data_generation_method, tau = c(0.005, 0.025, 0
               TDR_rbfk = TDR_rbfk, FDR_rbfk = FDR_rbfk, 
               TDR_klln = TDR_klln, FDR_klln = FDR_klln,
               elapse_sgdpmm = elapse_sgdpmm, elapse_rbfk = elapse_rbfk, elapse_klln = elapse_klln,
-              rindex_sgdpmm = rindex_SGDPMM))
+              rindex_sgdpmm = rindex_SGDPMM, rindex_rbfk = rindex_rbfk, rindex_klln = rindex_klln))
 }
 
 cluster_apply = function(iteration, data_generation_method = "NSBM") {
@@ -657,7 +661,9 @@ cluster_apply = function(iteration, data_generation_method = "NSBM") {
     elapse_sgdpmm = result$elapse_sgdpmm, 
     elapse_rbfk = result$elapse_rbfk, 
     elapse_klln = result$elapse_klln,
-    rindex_sgdpmm = result$rindex_sgdpmm
+    rindex_sgdpmm = result$rindex_sgdpmm,
+    rindex_rbfk = result$rindex_rbfk,
+    rindex_klln = result$rindex_klln
   ))
 }
 
@@ -676,7 +682,7 @@ sjob = slurm_apply(
   cpus_per_node = 1,
   global_objects = c(
     "loglike", "logmargs", "SGDPMMSBM_estimation", "SGDPMMSBM_inference", "SGDPMMSBM_performance",
-    "NSBM_generation", "stargraph", "randombipartitegraph", "preferattachgraph"
+    "NSBM_generation", "stargraph", "randombipartitegraph", "preferattachgraph", "main_noisySBM_fit", "main_noisySBM_infer"
   ),
   pkgs = c(
     "dplyr","tidyr","ggplot2","fossil","invgamma","MASS",
@@ -684,4 +690,5 @@ sjob = slurm_apply(
   )
 )
 cat("Slurm job submitted!\n")
-rslurm::wait_slurm(sjob)
+
+results = get_slurm_out(sjob, outtype = "raw")

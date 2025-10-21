@@ -50,6 +50,8 @@ SBM_visualization = function(input_dir, output_dir){
   }
   elapse_rbfk = sapply(results, function(x) as.numeric(x[["elapse_rbfk"]],  units = "mins"))
   elapse_klln = sapply(results, function(x) as.numeric(x[["elapse_klln"]],  units = "mins"))
+  rindex_rbfk = sapply(results, function(x) as.numeric(x[["rindex_rbfk"]]))
+  rindex_klln = sapply(results, function(x) as.numeric(x[["rindex_klln"]]))
   
   df_results <- data.frame(
     tau   = rep(tau, 2),
@@ -83,8 +85,8 @@ SBM_visualization = function(input_dir, output_dir){
   
   df_ROC <- data.frame(
     tau       = tau,
-    TDR   = TDR_mean,
-    FDR   = FDR_mean,
+    TDR_bayes   = TDR_mean,
+    FDR_bayes   = FDR_mean,
     TDR_rbfk  = TDR_rbfk_mean,
     FDR_rbfk  = FDR_rbfk_mean,
     TDR_klln  = TDR_klln_mean,
@@ -96,16 +98,16 @@ SBM_visualization = function(input_dir, output_dir){
       names_to = c(".value", "Method"),
       names_sep = "_"
     ) %>%
-    dplyr::mutate(Method = factor(Method, levels = c("SBM", "rbfk", "klln")))
+    dplyr::mutate(Method = factor(Method, levels = c("bayes", "rbfk", "klln")))
   
   p2 = 
     ggplot(df_ROC, aes(x = FDR, y = TDR, color = Method, shape = Method)) +
     geom_line(linewidth = 1) +
     geom_point(size = 3) +
-    scale_color_manual(values = c("SBM" = "red", "rbfk" = "blue", "klln" = "green"),
-                       labels = c("SBM", "RBFK", "KLLN")) +
-    scale_shape_manual(values = c("SBM" = 17, "rbfk" = 16, "klln" = 15),
-                       labels = c("SBM", "RBFK", "KLLN")) +
+    scale_color_manual(values = c("bayes" = "red", "rbfk" = "blue", "klln" = "green"),
+                       labels = c("bayes", "RBFK", "KLLN")) +
+    scale_shape_manual(values = c("bayes" = 17, "rbfk" = 16, "klln" = 15),
+                       labels = c("bayes", "RBFK", "KLLN")) +
     labs(title = "ROC Curve (NSBM)", x = "FDR", y = "TDR")
   if(input_dir == "_rslurm_mfmsbmseq"){
     ggsave(file.path(output_dir, "MFMSBM (Sequential) ROC Curve (NSBM).png"), plot = p2, width = 6, height = 6, dpi = 300)
@@ -118,7 +120,7 @@ SBM_visualization = function(input_dir, output_dir){
   }
   
   df_time = rbind(
-    data.frame(method = "SBM", minutes = elapse),
+    data.frame(method = "bayes",     minutes = elapse),
     data.frame(method = "RBFK",    minutes = elapse_rbfk),
     data.frame(method = "KLLN",    minutes = elapse_klln)
   )
@@ -140,7 +142,11 @@ SBM_visualization = function(input_dir, output_dir){
     ggsave(file.path(output_dir, "runtime boxplot of SGDPMMSBM (simultaneous).png"), p3, width = 6, height = 6, dpi = 300)
   }
   
-  df_rand = data.frame(method = "SBM", RI = rindex)
+  df_rand = rbind(
+    data.frame(method = "bayes", RI = rindex),
+    data.frame(method = "RBFK", RI = rindex_rbfk),
+    data.frame(method = "KLLN", RI = rindex_klln)
+  )
   
   p4 = 
     ggplot(df_rand, aes(x = method, y = RI, fill = method)) +
