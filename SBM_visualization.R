@@ -1,4 +1,3 @@
-rm(list = ls())
 .libPaths("~/R/x86_64-pc-linux-gnu-library/4.4")
 
 library(dplyr)
@@ -148,10 +147,16 @@ SBM_visualization = function(input_dir, output_dir){
     data.frame(method = "KLLN", RI = rindex_klln)
   )
   
+  df_prop = df_rand %>%
+    dplyr::group_by(method) %>%
+    dplyr::summarise(prop_below = mean(RI < 0.75, na.rm = TRUE), .groups = "drop") %>%
+    dplyr::mutate(label = sprintf("RI < 0.75: %.1f%%", 100 * prop_below))
+  
   p4 = 
     ggplot(df_rand, aes(x = method, y = RI, fill = method)) +
     geom_boxplot(width = 0.55, outlier.shape = NA, alpha = 0.7) +
     geom_jitter(width = 0.15, height = 0, size = 0.9, alpha = 0.35) +
+    geom_text(data = df_prop, aes(x = method, y = 0.75, label = label), inherit.aes = FALSE, vjust = 1, size = 3.5) +
     coord_cartesian(ylim = c(0, 1)) + 
     labs(title = "Rand Index", x = NULL, y = "Rand Index") +
     theme_minimal(base_size = 12) +
