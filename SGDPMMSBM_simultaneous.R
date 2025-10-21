@@ -1,6 +1,3 @@
-rm(list=ls())
-## We consider undirected graph without selfloops
-
 .libPaths("~/R/x86_64-pc-linux-gnu-library/4.4")
 library(ConjugateDP)
 library(dplyr)
@@ -667,27 +664,33 @@ cluster_apply = function(iteration, data_generation_method = "NSBM") {
   ))
 }
 
-library(rslurm)
-outdir <- Sys.getenv("OUTDIR", unset = file.path(getwd(), "Output/run_sgdpmmsbm_sim"))
-if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
-options(bitmapType = "cairo")
-
-niteration = 500
-cat("Submitting Slurm job...\n")
-sjob = slurm_apply(
-  cluster_apply,
-  params = data.frame(iteration = 1:niteration),
-  jobname = "sgdpmmsbm-sim",
-  nodes = niteration,
-  cpus_per_node = 10,
-  global_objects = c(
-    "loglike", "logmargs", "SGDPMMSBM_estimation", "SGDPMMSBM_inference", "SGDPMMSBM_performance",
-    "NSBM_generation", "stargraph", "randombipartitegraph", "preferattachgraph", "main_noisySBM_fit", "main_noisySBM_infer"
-  ),
-  pkgs = c(
-    "dplyr","tidyr","ggplot2","fossil","invgamma","MASS",
-    "igraph","noisySBM","noisysbmGGM","ConjugateDP"
+SGDPMMSBM_main = function(){
+  library(rslurm)
+  outdir <- Sys.getenv("OUTDIR", unset = file.path(getwd(), "Output/run_sgdpmmsbm_sim"))
+  if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
+  options(bitmapType = "cairo")
+  
+  niteration = 500
+  cat("Submitting Slurm job...\n")
+  sjob = slurm_apply(
+    cluster_apply,
+    params = data.frame(iteration = 1:niteration),
+    jobname = "sgdpmmsbm-sim",
+    nodes = niteration,
+    cpus_per_node = 10,
+    global_objects = c(
+      "loglike", "logmargs", "SGDPMMSBM_estimation", "SGDPMMSBM_inference", "SGDPMMSBM_performance",
+      "NSBM_generation", "stargraph", "randombipartitegraph", "preferattachgraph", "main_noisySBM_fit", "main_noisySBM_infer"
+    ),
+    pkgs = c(
+      "dplyr","tidyr","ggplot2","fossil","invgamma","MASS",
+      "igraph","noisySBM","noisysbmGGM","ConjugateDP"
+    )
   )
-)
-cat("Slurm job submitted!\n")
-results = get_slurm_out(sjob, outtype = "raw")
+  cat("Slurm job submitted!\n")
+  results = get_slurm_out(sjob, outtype = "raw")
+}
+
+if (sys.nframe() == 0) {
+  SGDPMMSBM_main()
+}

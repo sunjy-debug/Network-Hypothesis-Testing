@@ -1,6 +1,3 @@
-rm(list=ls())
-## We consider undirected graph without selfloops
-
 .libPaths("~/R/x86_64-pc-linux-gnu-library/4.4")
 library(dplyr)
 library(tidyr)
@@ -675,27 +672,33 @@ cluster_apply = function(iteration, data_generation_method = "NSBM") {
   ))
 }
 
-library(rslurm)
-outdir <- Sys.getenv("OUTDIR", unset = file.path(getwd(), "Output/run_mfmsbm_seq"))
-if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
-options(bitmapType = "cairo")
-
-niteration = 500
-cat("Submitting Slurm job...\n")
-sjob = slurm_apply(
-  cluster_apply,
-  params = data.frame(iteration = 1:niteration),
-  jobname = "mfmsbm-seq",
-  nodes = niteration,
-  cpus_per_node = 1,
-  global_objects = c(
-    "loglike", "logmargs", "MFMSBM_estimation", "MFMSBM_inference", "MFMSBM_performance",
-    "NSBM_generation", "stargraph", "randombipartitegraph", "preferattachgraph", "main_noisySBM_fit", "main_noisySBM_infer"
-  ),
-  pkgs = c(
-    "dplyr","tidyr","ggplot2","fossil","invgamma","MASS",
-    "igraph","noisySBM","noisysbmGGM"
+MFMSBM_main = function(){
+  library(rslurm)
+  outdir <- Sys.getenv("OUTDIR", unset = file.path(getwd(), "Output/run_mfmsbm_seq"))
+  if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
+  options(bitmapType = "cairo")
+  
+  niteration = 500
+  cat("Submitting Slurm job...\n")
+  sjob = slurm_apply(
+    cluster_apply,
+    params = data.frame(iteration = 1:niteration),
+    jobname = "mfmsbm-seq",
+    nodes = niteration,
+    cpus_per_node = 1,
+    global_objects = c(
+      "loglike", "logmargs", "MFMSBM_estimation", "MFMSBM_inference", "MFMSBM_performance",
+      "NSBM_generation", "stargraph", "randombipartitegraph", "preferattachgraph", "main_noisySBM_fit", "main_noisySBM_infer"
+    ),
+    pkgs = c(
+      "dplyr","tidyr","ggplot2","fossil","invgamma","MASS",
+      "igraph","noisySBM","noisysbmGGM"
+    )
   )
-)
-cat("Slurm job submitted!\n")
-results = get_slurm_out(sjob, outtype = "raw")
+  cat("Slurm job submitted!\n")
+  results = get_slurm_out(sjob, outtype = "raw")
+}
+
+if (sys.nframe() == 0) {
+  MFMSBM_main()
+}
