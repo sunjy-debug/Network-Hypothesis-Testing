@@ -9,7 +9,13 @@ library(MASS)
 library(igraph)
 library(noisySBM)
 library(noisysbmGGM)
-source("noisysbmGGM_decouple.R")
+env_noisysbmGGM = asNamespace("noisysbmGGM")
+env_klln = new.env(parent = env_noisysbmGGM)
+sys.source("noisysbmGGM_decouple.R", envir = env_klln)
+main_noisySBM_fit = get("main_noisySBM_fit",   envir = env_klln)
+main_noisySBM_infer = get("main_noisySBM_infer", envir = env_klln)
+environment(main_noisySBM_fit) = env_klln
+environment(main_noisySBM_infer) = env_klln
 
 ## Function for log-likelihood related to jth observation
 loglike = function(Z, Q, mu, sigma, X, j, n)
