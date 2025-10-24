@@ -1,5 +1,3 @@
-rm(list=ls())
-
 .libPaths("~/R/x86_64-pc-linux-gnu-library/4.4")
 library(noisysbmGGM)
 
@@ -74,5 +72,5 @@ main_noisySBM_infer = function (Rho, theta, Z, X, alpha)
   Avec = get_Aall_qval(Rho, theta, Z, dataVec, alpha)
   A[lower.tri(A)] = Avec
   A <- A + t(A)
-  return(A = A)
+  return(list(A = A))
 }
