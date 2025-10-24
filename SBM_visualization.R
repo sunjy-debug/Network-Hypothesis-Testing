@@ -41,14 +41,14 @@ SBM_visualization = function(input_dir, output_dir){
   FDR_klln_mean = apply(FDR_klln, 2, mean, na.rm = TRUE)
   
   if (input_dir == "_rslurm_mfmsbmseq" || input_dir == "_rslurm_mfmsbmsim"){
-    elapse = sapply(results, function(x) as.numeric(x[["elapse_mfm"]],  units = "mins"))
+    elapse = sapply(results, function(x) log(as.numeric(x[["elapse_mfm"]],  units = "mins")))
     rindex = sapply(results, function(x) as.numeric(x[["rindex_mfm"]]))
   } else if (input_dir == "_rslurm_sgdpmmsbmseq" || input_dir == "_rslurm_sgdpmmsbmsim"){
-    elapse = sapply(results, function(x) as.numeric(x[["elapse_sgdpmm"]],  units = "mins"))
+    elapse = sapply(results, function(x) log(as.numeric(x[["elapse_sgdpmm"]],  units = "mins")))
     rindex = sapply(results, function(x) as.numeric(x[["rindex_sgdpmm"]]))
   }
-  elapse_rbfk = sapply(results, function(x) as.numeric(x[["elapse_rbfk"]],  units = "mins"))
-  elapse_klln = sapply(results, function(x) as.numeric(x[["elapse_klln"]],  units = "mins"))
+  elapse_rbfk = sapply(results, function(x) log(as.numeric(x[["elapse_rbfk"]],  units = "mins")))
+  elapse_klln = sapply(results, function(x) log(as.numeric(x[["elapse_klln"]],  units = "mins")))
   rindex_rbfk = sapply(results, function(x) as.numeric(x[["rindex_rbfk"]]))
   rindex_klln = sapply(results, function(x) as.numeric(x[["rindex_klln"]]))
   
@@ -119,16 +119,16 @@ SBM_visualization = function(input_dir, output_dir){
   }
   
   df_time = rbind(
-    data.frame(method = "bayes",     minutes = elapse),
-    data.frame(method = "RBFK",    minutes = elapse_rbfk),
-    data.frame(method = "KLLN",    minutes = elapse_klln)
+    data.frame(method = "bayes", minutes = elapse),
+    data.frame(method = "RBFK", minutes = elapse_rbfk),
+    data.frame(method = "KLLN", minutes = elapse_klln)
   )
   
   p3 = 
     ggplot(df_time, aes(x = method, y = minutes, fill = method)) +
     geom_boxplot(width = 0.55, outlier.shape = NA, alpha = 0.7) +
     geom_jitter(width = 0.15, height = 0, size = 0.9, alpha = 0.35) +
-    labs(title = "Runtime Comparison", x = NULL, y = "Elapsed time (minutes)") +
+    labs(title = "Runtime Comparison", x = NULL, y = "log Elapsed time (minutes)") +
     theme_minimal(base_size = 12) +
     theme(legend.position = "none")
   if(input_dir == "_rslurm_mfmsbmseq"){
