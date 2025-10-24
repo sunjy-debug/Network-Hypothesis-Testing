@@ -7,16 +7,16 @@ library(ggplot2)
 SBM_visualization = function(input_dir, output_dir){
   cat("Output job begins...\n")
   files = list.files(input_dir, pattern = "^results_.*\\.RDS$", full.names = TRUE, recursive = TRUE)
-  results = do.call(c, lapply(files, readRDS))
+  results = lapply(files, readRDS)
   
   tau = c(0.005, 0.025, 0.05, 0.1, 0.15, 0.25)
   
   if (input_dir == "_rslurm_mfmsbmseq" || input_dir == "_rslurm_mfmsbmsim"){
-    TDR = do.call(rbind, lapply(results, function(x) if (is.list(x)) x[["TDR_MFM"]] else NULL))
-    FDR = do.call(rbind, lapply(results, function(x) if (is.list(x)) x[["FDR_MFM"]] else NULL))
+    TDR = do.call(rbind, Filter(Negate(is.null), lapply(results, `[[`, "TDR_MFM")))
+    FDR = do.call(rbind, Filter(Negate(is.null), lapply(results, `[[`, "FDR_MFM")))
   } else if (input_dir == "_rslurm_sgdpmmsbmseq" || input_dir == "_rslurm_sgdpmmsbmsim"){
-    TDR = do.call(rbind, lapply(results, function(x) if (is.list(x)) x[["TDR_SGDPMM"]] else NULL))
-    FDR = do.call(rbind, lapply(results, function(x) if (is.list(x)) x[["FDR_SGDPMM"]] else NULL))
+    TDR = do.call(rbind, Filter(Negate(is.null), lapply(results, `[[`, "TDR_SGDPMM")))
+    FDR = do.call(rbind, Filter(Negate(is.null), lapply(results, `[[`, "FDR_SGDPMM")))
   }
   
   TDR_mean = apply(TDR, 2, mean, na.rm = TRUE)
@@ -31,13 +31,13 @@ SBM_visualization = function(input_dir, output_dir){
   FDR_upper = pmin(FDR_mean + qnorm(.975) * FDR_sd / sqrt(niteration), 1)
   FDR_lower = pmax(FDR_mean - qnorm(.975) * FDR_sd / sqrt(niteration), 0)
   
-  TDR_rbfk = do.call(rbind, lapply(results, function(x) if (is.list(x)) x[["TDR_rbfk"]] else NULL))
+  TDR_rbfk = do.call(rbind, Filter(Negate(is.null), lapply(results, `[[`, "TDR_rbfk")))
+  FDR_rbfk = do.call(rbind, Filter(Negate(is.null), lapply(results, `[[`, "FDR_rbfk")))
+  TDR_klln = do.call(rbind, Filter(Negate(is.null), lapply(results, `[[`, "TDR_klln")))
+  FDR_klln = do.call(rbind, Filter(Negate(is.null), lapply(results, `[[`, "FDR_klln")))
   TDR_rbfk_mean = apply(TDR_rbfk, 2, mean, na.rm = TRUE)
-  FDR_rbfk = do.call(rbind, lapply(results, function(x) if (is.list(x)) x[["FDR_rbfk"]] else NULL))
   FDR_rbfk_mean = apply(FDR_rbfk, 2, mean, na.rm = TRUE)
-  TDR_klln = do.call(rbind, lapply(results, function(x) if (is.list(x)) x[["TDR_klln"]]  else NULL))
   TDR_klln_mean = apply(TDR_klln, 2, mean, na.rm = TRUE)
-  FDR_klln = do.call(rbind, lapply(results, function(x) if (is.list(x)) x[["FDR_klln"]]  else NULL))
   FDR_klln_mean = apply(FDR_klln, 2, mean, na.rm = TRUE)
   
   if (input_dir == "_rslurm_mfmsbmseq" || input_dir == "_rslurm_mfmsbmsim"){
