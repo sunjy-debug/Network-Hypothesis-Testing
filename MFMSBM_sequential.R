@@ -8,13 +8,6 @@ library(MASS)
 library(igraph)
 library(noisySBM)
 library(noisysbmGGM)
-env_noisysbmGGM = asNamespace("noisysbmGGM")
-env_klln = new.env(parent = env_noisysbmGGM)
-sys.source("noisysbmGGM_decouple.R", envir = env_klln)
-main_noisySBM_fit = get("main_noisySBM_fit",   envir = env_klln)
-main_noisySBM_infer = get("main_noisySBM_infer", envir = env_klln)
-environment(main_noisySBM_fit) = env_klln
-environment(main_noisySBM_infer) = env_klln
 
 ## Function for log-likelihood related to jth observation
 loglike = function(Z, Q, mu, sigma, X, j, n)
@@ -534,7 +527,14 @@ preferattachgraph = function(){
 
 ## take the data into the MFM-SBM algorithm
 MFMSBM_performance = function(data_generation_method, tau = c(0.005, 0.025, 0.05, 0.1, 0.15, 0.25)){
-  rindex_MFM = NA
+  env_noisysbmGGM = asNamespace("noisysbmGGM")
+  env_klln = new.env(parent = env_noisysbmGGM)
+  eval(parse(text = decouple_code), envir = env_klln)
+  main_noisySBM_fit = get("main_noisySBM_fit",   envir = env_klln)
+  main_noisySBM_infer = get("main_noisySBM_infer", envir = env_klln)
+  environment(main_noisySBM_fit) = env_klln
+  environment(main_noisySBM_infer) = env_klln
+  
   start = Sys.time()
   start_data = Sys.time()
   cat("Data generation starts.\n")
@@ -560,6 +560,7 @@ MFMSBM_performance = function(data_generation_method, tau = c(0.005, 0.025, 0.05
   
   cat("MFMSBM fitting begins. \n")
   start_mfm = Sys.time()
+  rindex_MFM = NA
   if(data_generation_method == "NSBM"){
     start = Sys.time()  
     niterations = 300
@@ -684,6 +685,7 @@ MFMSBM_main = function(){
   if (!dir.exists(outdir)) dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
   options(bitmapType = "cairo")
   
+  decouple_code <- paste(readLines("noisysbmGGM_decouple.R", warn = FALSE), collapse = "\n")
   niteration = 500
   cat("Submitting Slurm job...\n")
   sjob = slurm_apply(
@@ -694,7 +696,7 @@ MFMSBM_main = function(){
     cpus_per_node = 1,
     global_objects = c(
       "loglike", "logmargs", "MFMSBM_estimation", "MFMSBM_inference", "MFMSBM_performance",
-      "NSBM_generation", "stargraph", "randombipartitegraph", "preferattachgraph", "main_noisySBM_fit", "main_noisySBM_infer"
+      "NSBM_generation", "stargraph", "randombipartitegraph", "preferattachgraph", "decouple_code"
     ),
     pkgs = c(
       "dplyr","tidyr","ggplot2","fossil","invgamma","MASS",
