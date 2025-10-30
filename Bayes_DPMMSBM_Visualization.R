@@ -158,5 +158,15 @@ SBM_visualization = function(input_dir, output_dir){
     theme(legend.position = "none")
   ggsave(file.path(output_dir, "Rand Index.png"), plot = p3, width = 6, height = 6, dpi = 300)
   
+  df_rand$file_id = rep(1:length(files), times = length(unique(df_rand$method)))
+  df_lowrand = df_rand %>%
+    dplyr::group_by(file_id) %>%
+    dplyr::summarise(low = any(RI < 0.25, na.rm = TRUE), .groups = "drop") %>%
+    dplyr::filter(low) %>%
+    dplyr::arrange(file_id)
+  if(nrow(df_lowrand) > 0){
+    cat("The", df_lowrand$file_id, "-th files give a rand index results < 0.25.")
+  }
+  
   cat("Output job ends!\n")
 }
