@@ -110,10 +110,8 @@ SBM_visualization = function(input_dir, output_dir){
     geom_point(size = 3) +
     scale_color_manual(values = c("MFMSBM_seq" = color[1], "MFMSBM_sim" = color[2], "SGDPMMSBM_seq" = color[3], "SGDPMMSBM_sim" = color[4], "rbfk" = color[5], "klln" = color[6]),
                        labels = c("MFMSBM(seq)", "MFMSBM(sim)", "SGDPMMSBM(seq)", "SGDPMMSBM(sim)", "RBFK", "KLLN")) +
-    scale_shape_manual(values = c("MFMSBM_seq" = 17, "MFMSBM_sim" = 16, "SGDPMMSBM_seq" = 15, "SGDPMMSBM_sim" = 14, "rbfk" = 13, "klln" = 12),
-                       labels = c("MFMSBM(seq)", "MFMSBM(sim)", "SGDPMMSBM(seq)", "SGDPMMSBM(sim)", "RBFK", "KLLN")) +
     labs(title = "ROC Curve", x = "FDR", y = "TDR")
-  ggsave(file.path(output_dir, "ROC Curve.png"), plot = p1, width = 6, height = 6, dpi = 300)
+  ggsave(file.path(output_dir, "ROC Curve.png"), plot = p1, width = 10, height = 6, dpi = 300)
   
   df_time = rbind(
     data.frame(method = "MFMSBM(seq)", minutes = elapse_mfmsbmseq),
@@ -131,7 +129,7 @@ SBM_visualization = function(input_dir, output_dir){
     labs(title = "Runtime Comparison", x = NULL, y = "log elapsed time (minutes)") +
     theme_minimal(base_size = 12) +
     theme(legend.position = "none")
-  ggsave(file.path(output_dir, "runtime boxplot.png"), plot = p2, width = 6, height = 6, dpi = 300)
+  ggsave(file.path(output_dir, "runtime boxplot.png"), plot = p2, width = 12, height = 6, dpi = 300)
   
   df_rand = rbind(
     data.frame(method = "MFMSBM(seq)", RI = rindex_MFMSBM_seq),
@@ -156,7 +154,7 @@ SBM_visualization = function(input_dir, output_dir){
     labs(title = "Rand Index", x = NULL, y = "Rand Index") +
     theme_minimal(base_size = 12) +
     theme(legend.position = "none")
-  ggsave(file.path(output_dir, "Rand Index.png"), plot = p3, width = 6, height = 6, dpi = 300)
+  ggsave(file.path(output_dir, "Rand Index.png"), plot = p3, width = 12, height = 6, dpi = 300)
   
   df_rand$file_id = rep(1:length(files), times = length(unique(df_rand$method)))
   df_lowrand = df_rand %>%
