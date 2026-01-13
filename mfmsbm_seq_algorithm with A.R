@@ -6,7 +6,7 @@ library(tidyr)
 library(MASS)
 
 ## Function for log-likelihood related to ith observation
-loglike = function(Z, Q, mu, sigma, X, i)
+loglike = function(Z, Q, mu, sigma, X, A, i)
 {
   ################################################################
   
@@ -15,6 +15,7 @@ loglike = function(Z, Q, mu, sigma, X, i)
   ##        mu = mean matrix, a k by k matrix ##
   ##        sigma = standard deviation matrix, a k by k matrix ##
   ##        X = the observation data matrix, a n by n matrix ##
+  ##        A = the latent data matrix, a n by n matrix ##
   ##        i = observation index ##
   ##        n = number of observations ##
   
@@ -31,23 +32,24 @@ loglike = function(Z, Q, mu, sigma, X, i)
   if (i < n) {
     j = (i+1):n
     c_j = Z[j] # the cluster assignment of -ith observation
-    output = output + sum(log(exp(log(Q[c_i, c_j]) + dnorm(X[i, j], mu[c_i, c_j], sigma[c_i, c_j], log = TRUE)) + exp(log(1 - Q[c_i, c_j]) + dnorm(X[i, j], 0, 1, log = TRUE))))
+    output = output + sum(A[i, j] * log(Q[c_i, c_j]) + (1 - A[i, j]) * log(1 - Q[c_i, c_j]) + A[i, j] * dnorm(X[i, j], mu[c_i, c_j], sigma[c_i, c_j], log = TRUE) + (1 - A[i, j]) * dnorm(X[i, j], 0, 1, log = TRUE))
   }
   if (i > 1) {
     j = 1:(i-1)
     c_j = Z[j] # the cluster assignment of -ith observation
-    output = output + sum(log(exp(log(Q[c_j, c_i]) + dnorm(X[j, i], mu[c_j, c_i], sigma[c_j, c_i], log = TRUE)) + exp(log(1 - Q[c_j, c_i]) + dnorm(X[j, i], 0, 1, log = TRUE))))
+    output = output + sum(A[j, i] * log(Q[c_j, c_i]) + (1 - A[j, i]) * log(1 - Q[c_j, c_i]) + A[j, i] * dnorm(X[j, i], mu[c_j, c_i], sigma[c_j, c_i], log = TRUE) + (1 - A[j, i]) * dnorm(X[j, i], 0, 1, log = TRUE))
   }
   return(output)
 }
 
 #function for getting m(Xi)
-logmargs = function(Z, X, i, alpha, beta, rou, kappa, delta, xi)
+logmargs = function(Z, X, A, i, alpha, beta, rou, kappa, delta, xi)
 {
   ################################################################
   
   ## Input: Z = clustering configuration, a n by 1 vector ##
   ##        X = the observation data matrix, a n by n matrix ##
+  ##        A = the latent data matrix, a n by n matrix ##
   ##        i = observation index ##
   ##        alpha, beta = hyperparameters for the prior on elements in Q matrix in Beta distribution ##
   ##        rou, kappa = hyperparameters for the prior on elements in mu matrix in Normal distribution ##
@@ -59,43 +61,32 @@ logmargs = function(Z, X, i, alpha, beta, rou, kappa, delta, xi)
   n = nrow(X)
   
   k = max(Z)-1
-  result = NULL
+  result = rep(0, k)
   for (ii in 1:k)
   {
     idx = which(Z == ii)
-    result[ii] = sum(log(exp(log(beta / (alpha + beta)) + dnorm(X[i, idx], 0, 1, log = TRUE)) + 
-                       exp(log(alpha / (alpha + beta)) + dt((X[i, idx] - rou) / sqrt(xi / delta * (1 + 1 / kappa)), df = 2 * delta, log = TRUE) - log(sqrt(xi / delta * (1 + 1 / kappa))))))
+    if (length(idx) == 0) { 
+      result[ii] = 0
+      next
+    }
+    
+    A_vec = A[i, idx]
+    X_vec = X[i, idx]
+    if (any(A_vec == 0)) {
+      part0 = log(beta / (alpha + beta)) + dnorm(X_vec[A_vec == 0], 0, 1, log = TRUE)
+    } else {
+      part0 = NULL
+    }
+    
+    if (any(A_vec == 1)) {
+      part1 = log(alpha / (alpha + beta)) + dt((X_vec[A_vec == 1] - rou) / sqrt(xi / delta * (1 + 1 / kappa)), df = 2 * delta, log = TRUE) - log(sqrt(xi / delta * (1 + 1 / kappa)))
+    } else { 
+      part1 = NULL 
+    }
+    
+    result[ii] = sum(part0) + sum(part1)
   }
   return(sum(result))
-}
-
-#function for getting log posterior
-logposterior = function(Z, Q, mu, sigma, X, Vn, gamma, alpha, beta, rou, kappa, delta, xi){
-  n = nrow(X)
-  ss = 0
-  # logP(X | Z, Q, mu, sigma)
-  for(i in 1:n){
-    c_i = Z[i]
-    for(j in i:n){
-      c_j = Z[j]
-      if(i == j) next
-      ss = ss + log(exp(log(Q[c_i, c_j]) + dnorm(X[i, j], mu[c_i, c_j], sigma[c_i, c_j], log = TRUE)) + exp(log(1 - Q[c_i, c_j]) + dnorm(X[i, j], 0, 1, log = TRUE)))
-    }
-  }
-  # logP(Z)
-  counts_Z = as.numeric(table(as.factor(Z)))
-  k = length(counts_Z)
-  ss = ss + Vn[k] + sum(lgamma(counts_Z + gamma) - lgamma(gamma))
-  # logP(Q)
-  # logP(mu, sigma)
-  for(r in 1:k){
-    for(s in r:k){
-      ss = ss + dbeta(Q[r, s], alpha, beta, log = TRUE)
-      ss = ss + dinvgamma(sigma[r, s] ^ 2, shape = delta, rate = xi, log = TRUE)
-      ss = ss + dnorm(mu[r, s], mean = rou, sd = sigma[r, s] / sqrt(kappa), log = TRUE)
-    }
-  }
-  return(ss)
 }
 
 ## Dahl's method to summarize the samples from the MCMC
@@ -179,8 +170,17 @@ MFMSBM_seq_estimation = function(X, niterations, delta, xi, rou, kappa, alpha, b
       mu[j,i] = mu[i,j]
     }
   }
-  best_score = -Inf
-  best_state = NULL
+  A = matrix(0, n, n)
+  for (i in 1:n){
+    for(j in i:n){
+      A[i,j] = rbinom(1, 1, prob = Q[Z[i], Z[j]] * dnorm(X[i,j], mu[Z[i], Z[j]], sigma[Z[i], Z[j]]) /
+                        (Q[Z[i], Z[j]] * dnorm(X[i,j], mu[Z[i], Z[j]], sigma[Z[i], Z[j]]) +
+                           (1 - Q[Z[i], Z[j]]) * dnorm(X[i, j], 0, 1)))
+      A[j, i] = A[i, j]
+    }
+  }
+  diag(A) = 0
+  
   History = vector("list", niterations)
   
   # Vn: a set of pre-calculated logarithmic normalization constants related to the number of clusters
@@ -217,12 +217,12 @@ MFMSBM_seq_estimation = function(X, niterations, delta, xi, rou, kappa, alpha, b
         current.probs = sapply(1:k, function(x) {
           Z_star = Z
           Z_star[i] = x
-          current.prob = log(gamma + current.counts.noi[x]) + loglike(Z_star, Q, mu, sigma, X, i)
+          current.prob = log(gamma + current.counts.noi[x]) + loglike(Z_star, Q, mu, sigma, X, A, i)
           return(current.prob)
         })
         Z_star = Z
         Z_star[i] = k + 1
-        current.probs[k + 1] = log(gamma) + logmargs(Z_star, X, i, alpha, beta, rou, kappa, delta, xi) + (Vn[k + 1] - Vn[k])
+        current.probs[k + 1] = log(gamma) + logmargs(Z_star, X, A, i, alpha, beta, rou, kappa, delta, xi) + (Vn[k + 1] - Vn[k])
         current.probs = exp(current.probs - max(current.probs))
         current.probs = current.probs / sum(current.probs)
         
@@ -261,18 +261,18 @@ MFMSBM_seq_estimation = function(X, niterations, delta, xi, rou, kappa, alpha, b
         # a singleton, have |C| choices
         # delete the current cluster
         current.counts.noi = counts_Z
-        current.counts.noi[current.cluster.i] = current.counts.noi[current.cluster.i] - 1 - gamma
+        current.counts.noi[current.cluster.i] = current.counts.noi[current.cluster.i] - 1
         
         #finding the probs for sampling process
         current.probs = sapply(1:k, function(x) {
           Z_star = Z
           Z_star[i] = x
-          current.prob = log(gamma + current.counts.noi[x]) + loglike(Z_star, Q, mu, sigma, X, i)
+          current.prob = log(gamma + current.counts.noi[x]) + loglike(Z_star, Q, mu, sigma, X, A, i)
           return(current.prob)
         })
         Z_star = Z
         Z_star[i] = k + 1
-        current.probs[k + 1] = log(gamma) + logmargs(Z_star, X, i, alpha, beta, rou, kappa, delta, xi) + (Vn[k] - Vn[k - 1])
+        current.probs[k + 1] = log(gamma) + logmargs(Z_star, X, A, i, alpha, beta, rou, kappa, delta, xi) + (Vn[k + 1] - Vn[k])
         current.probs = exp(current.probs - max(current.probs))
         current.probs = current.probs / sum(current.probs)
         
@@ -282,6 +282,11 @@ MFMSBM_seq_estimation = function(X, niterations, delta, xi, rou, kappa, alpha, b
         
         if (cluster.i > k) { # if it belongs to a new cluster
           cluster.i = current.cluster.i
+          counts_Z = table(as.factor(Z))
+          k = length(counts_Z)
+        } else if (cluster.i == current.cluster.i) {
+          # if it stayed in the singleton cluster
+          Z[i] = current.cluster.i
           counts_Z = table(as.factor(Z))
           k = length(counts_Z)
         } else { # if it belongs to a previous cluster
@@ -298,47 +303,38 @@ MFMSBM_seq_estimation = function(X, niterations, delta, xi, rou, kappa, alpha, b
     # end for loop over subjects i
     
     ## update A: the adjacency matrix, a n by n matrix ##
-    # We use a soft threshold a to represent the influence of A
-    a = matrix(0, n, n)
     for (i in 1:n){
-      c_i = Z[i]
       for(j in i:n){
-        c_j = Z[j]
-        a[i, j] = Q[c_i, c_j] * dnorm(X[i,j], mu[c_i, c_j], sigma[c_i, c_j]) /
-                          (Q[c_i, c_j] * dnorm(X[i,j], mu[c_i, c_j], sigma[c_i, c_j]) +
-                             (1 - Q[c_i, c_j]) * dnorm(X[i, j], 0, 1))
-        a[j, i] = a[i, j]
+        A[i,j] = rbinom(1, 1, Q[Z[i], Z[j]] * dnorm(X[i,j], mu[Z[i], Z[j]], sigma[Z[i], Z[j]]) /
+                          (Q[Z[i], Z[j]] * dnorm(X[i,j], mu[Z[i], Z[j]], sigma[Z[i], Z[j]]) +
+                             (1 - Q[Z[i], Z[j]]) * dnorm(X[i, j], 0, 1)))
+        A[j, i] = A[i, j]
       }
     }
-    diag(a) = 0
+    diag(A) = 0
     
     ## update Q, mu, sigma ##
     Q = matrix(0, k, k)
     mu = matrix(0, k, k)
     sigma = matrix(0, k, k)
-
+    
     for (r in 1:k){
       idx_r = which(Z == r)
       for (s in r:k)
       {
         idx_s = which(Z == s)
-        a_mask_upper = a[idx_r, idx_r][upper.tri(a[idx_r, idx_r], diag = FALSE)]
-        a_mask = a[idx_r, idx_s]
-        X_mask_upper = X[idx_r, idx_r][upper.tri(X[idx_r, idx_r], diag = FALSE)]
-        X_mask = X[idx_r, idx_s]
-        
-        sumA =  if (r == s) sum(a_mask_upper) else sum(a_mask) # sum of A_ij when Z_i = r, Z_j = s
-        numA = if (r == s) length(a_mask_upper) else length(a_mask) # num of Z_i = r, Z_j = s
-        sumX = if (r == s) {
-          sum(a_mask_upper * X_mask_upper)
-        } else {
-          sum(a_mask * X_mask)
+        sumA =  if (r == s) sum(A[idx_r, idx_r][upper.tri(A[idx_r, idx_r], diag = FALSE)]) else sum(A[idx_r, idx_s]) # sum of A_ij when Z_i = r, Z_j = s
+        numA = if (r == s) sum(upper.tri(A[idx_r, idx_r], diag = FALSE)) else length(idx_r) * length(idx_s) # num of Z_i = r, Z_j = s
+        sumX = if (r == s) { 
+          sum(X[idx_r, idx_r][(A[idx_r, idx_r] == 1) & upper.tri(A[idx_r, idx_r], diag = FALSE)])
+        } else { 
+          sum(X[idx_r, idx_s][A[idx_r, idx_s] == 1])
         } # sum of X_ij when Z_i = r, Z_j = s and A_ij = 1
         meanX = ifelse(sumA > 0, sumX / sumA, 0) # mean of X_ij when Z_i = r, Z_j = s and A_ij = 1
-        sumsquareX = if (r == s) {
-          sum(a_mask_upper * (X_mask_upper - meanX) ^ 2)
-        } else {
-          sum(a_mask * (X_mask - meanX) ^ 2)
+        sumsquareX = if (r == s) { 
+          sum((X[idx_r, idx_r][(A[idx_r, idx_r] == 1) & upper.tri(A[idx_r, idx_r], diag = FALSE)] - meanX) ^ 2)
+        } else { 
+          sum((X[idx_r, idx_s][A[idx_r, idx_s] == 1] - meanX) ^ 2)
         } # sum of squared X_ij - meanX when Z_i = r, Z_j = s and A_ij = 1
         alpha_t = alpha + sumA
         beta_t = beta + numA - sumA
@@ -346,7 +342,7 @@ MFMSBM_seq_estimation = function(X, niterations, delta, xi, rou, kappa, alpha, b
         kappa_t = kappa + sumA
         delta_t = delta + sumA / 2
         xi_t = xi + sumsquareX / 2 + (meanX - rou) ^ 2 * kappa * sumA / kappa_t / 2
-
+        
         Q[r,s] = rbeta(1, alpha_t, beta_t)
         Q[s,r] = Q[r,s]
         sigma[r,s] = sqrt(rinvgamma(1, delta_t, rate = xi_t))
@@ -441,21 +437,13 @@ MFMSBM_seq_estimation = function(X, niterations, delta, xi, rou, kappa, alpha, b
     q = q + t(q)
     diag(q) = NA
     
-    # calculate score
-    score = logposterior(Z, Q, mu, sigma, X, Vn, gamma, alpha, beta, rou, kappa, delta, xi)
-    if(is.finite(score) && score > best_score) {
-      best_score = score
-      best_state = list(Z = Z, Q = Q, mu = mu, sigma = sigma, q = q, logposterior = score)
-    } 
-    
-    History[[niter]] = list(Z = Z, q = q, logposterior = score)
+    History[[niter]] = list(Z = Z, A = A, q = q)
     if (niter %% 10 == 0) {
       cat("Iteration:", niter, "Cluster Number:", k, "\n", Z,"\n")
     }
-    
   }# for loop over iterations
   
-  return(list(Iterates = History, best_score = best_score, best_state = best_state))
+  return(list(Iterates = History))
 }
 
 SBM_inference = function(q, tau) {
@@ -478,9 +466,9 @@ mfmsbm_seq_algorithm = function(file_directory, output_directory, data_generatio
   
   cat("MFMSBM(sequential) fitting begins. \n")
   start_mfmsbmseq = Sys.time()
-  niterations = 1000
-  delta = 5
-  xi = 4
+  niterations = 600
+  delta = 1
+  xi = 1
   rou = 1
   kappa = 1  
   alpha = 1
